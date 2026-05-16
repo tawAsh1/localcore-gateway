@@ -1,13 +1,16 @@
 """Subprocess Lambda runtime (one per target = one warm execution env).
 
-Launched by the native backend as
-``python -m localcore_gateway.lambda_emu._worker --fd N``. The parent and this
-process talk length-prefixed JSON over the inherited socket fd ``N``.
+Launched by the native backend by absolute file path
+(``<python> <this_file> --fd N``) -- NOT ``-m`` -- so the target's chosen
+interpreter need not have localcore-gateway installed. This module is
+stdlib-only and self-contained. The parent and this process talk
+length-prefixed JSON over the inherited socket fd ``N``.
 
 Isolation is the whole point: this process's ``sys.path`` is ONLY the target's
-code roots (plus stdlib/site), so two targets whose handlers share a
-top-level module name (the monorepo case: every service has ``handler.py``)
-never collide -- they live in different interpreters.
+code roots (plus the chosen interpreter's stdlib/site), so two targets whose
+handlers share a top-level module name (the monorepo case: every service has
+``handler.py``) never collide -- they live in different interpreters, and each
+target can use its own venv (its own deps + Python version).
 
 Protocol
 --------
@@ -59,6 +62,13 @@ def _recvn(sock: socket.socket, n: int) -> bytes | None:
 def _send(sock: socket.socket, obj: dict[str, Any]) -> None:
     body = json.dumps(obj, default=str).encode()
     sock.sendall(struct.pack(">I", len(body)) + body)
+
+
+def _safe_resolve(p: str) -> str:
+    try:
+        return str(Path(p).resolve())
+    except OSError:
+        return p
 
 
 def _resolve_handler(spec: str) -> Any:
@@ -159,6 +169,10 @@ def main() -> None:
     if init is None or init.get("op") != "init":
         return
     try:
+        # Drop our own dir (added by launching this file directly) so the
+        # handler's namespace is only stdlib + interpreter site + code_roots.
+        here = str(Path(__file__).resolve().parent)
+        sys.path[:] = [p for p in sys.path if p and _safe_resolve(p) != here]
         for root in reversed(init["code_roots"]):
             if root not in sys.path:
                 sys.path.insert(0, root)

@@ -47,6 +47,7 @@ At least one of `tools` / `tool_schema_file` is required.
 | `backend` | `native` \| `sam` | `native` | – |
 | `handler` | string | – | **native** (required): `module.func` or `path/to/file.py:func` |
 | `code_root` | string \| list[string] | config file dir | **native**: dir(s) prepended to `sys.path`. Relative paths resolve against the config dir |
+| `python` | string | gateway's interpreter | **native**: Python executable for this target's worker (a path relative to the config dir, or a PATH command like `python3.12`). Lets each target run under its own venv → its own deps + version |
 | `sam_endpoint` | string | `http://127.0.0.1:3001` | **sam** |
 | `sam_function` | string | – | **sam** (required): logical name in the SAM template |
 | `function_name` | string | `local-function` | both (→ `context.function_name`) |

@@ -60,6 +60,10 @@ subprocess** (one warm execution environment per target). Therefore:
 - Two targets whose handlers share the **same top-level module name** — the
   monorepo norm where every service has `handler.py` — do **not** collide;
   each worker only sees its own `code_root`s. No renaming needed.
+- Set `python` per target to its own venv interpreter
+  (`services/orders/.venv/bin/python`): the worker then runs with **that
+  sub-project's dependencies and Python version**. The worker is launched by
+  file path, so that interpreter does *not* need localcore-gateway installed.
 - `timeout_sec` is a **hard** timeout: the worker is killed and respawned.
 - It is process-isolated but **not a security sandbox** (no filesystem /
   network jail). Only run trusted handler code; use `sam` for container-grade

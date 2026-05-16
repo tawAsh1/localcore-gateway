@@ -43,6 +43,9 @@ _IGNORE_DIRS = {
     ".ruff_cache",
 }
 _SPAWN_TIMEOUT_S = 30.0
+# Launched by absolute file path (NOT `-m`): the target's interpreter need not
+# have localcore-gateway installed. _worker.py is stdlib-only and standalone.
+_WORKER_PY = str(Path(__file__).with_name("_worker.py"))
 
 
 def _scan_mtime(roots: list[str]) -> float:
@@ -105,9 +108,11 @@ class NativeLambdaInvoker(LambdaInvoker):
         *,
         code_roots: list[str] | None = None,
         env_file: str | None = None,
+        python: str | None = None,
     ) -> None:
         self._cfg = cfg
         self._roots = [str(Path(r).resolve()) for r in (code_roots or ["."])]
+        self._python = python or sys.executable
         self._env = _child_env(cfg, env_file)
         self._lock = asyncio.Lock()  # one warm execution environment
         self._proc: asyncio.subprocess.Process | None = None
@@ -119,9 +124,8 @@ class NativeLambdaInvoker(LambdaInvoker):
         child.set_inheritable(True)
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "localcore_gateway.lambda_emu._worker",
+                self._python,
+                _WORKER_PY,
                 "--fd",
                 str(child.fileno()),
                 pass_fds=(child.fileno(),),
@@ -130,6 +134,9 @@ class NativeLambdaInvoker(LambdaInvoker):
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
+        except (FileNotFoundError, OSError) as err:
+            parent.close()
+            raise RuntimeError(f"cannot launch worker with python {self._python!r}: {err}") from err
         finally:
             child.close()
         parent.setblocking(True)  # used via blocking to_thread txns

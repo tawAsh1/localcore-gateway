@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -25,6 +26,13 @@ class LambdaFunctionConfig(BaseModel):
         description="Directory (or list of dirs) prepended to sys.path so the "
         "handler imports (native backend). Relative paths resolve against the "
         "config file's directory. Defaults to the config file's directory.",
+    )
+    python: str | None = Field(
+        default=None,
+        description="Python executable for the native worker: a path (relative "
+        "to the config dir) or a PATH command. Lets each target run under its "
+        "own venv/interpreter (its deps + version). Default: the gateway's "
+        "interpreter.",
     )
 
     # --- sam backend ---
@@ -130,6 +138,16 @@ class GatewayConfig(BaseModel):
 
     def resolved_env_file(self, lc: LambdaFunctionConfig) -> str | None:
         return str(self._resolve(lc.env_file)) if lc.env_file else None
+
+    def resolved_python(self, lc: LambdaFunctionConfig) -> str | None:
+        p = lc.python
+        if not p:
+            return None
+        # Treat as a filesystem path only if it looks like one; otherwise it
+        # is a bare command resolved via PATH (e.g. "python3.12").
+        if os.sep in p or p.startswith(("~", ".")):
+            return str(self._resolve(p))
+        return p
 
     def effective_tools(self, tc: LambdaTargetConfig) -> list[ToolSpec]:
         """Tools from tool_schema_file (if any) then inline; inline wins."""

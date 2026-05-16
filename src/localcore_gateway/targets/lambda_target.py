@@ -23,6 +23,7 @@ class LambdaTarget(Target):
             cfg.lambda_,
             code_roots=gateway_cfg.resolved_code_roots(cfg.lambda_),
             env_file=gateway_cfg.resolved_env_file(cfg.lambda_),
+            python=gateway_cfg.resolved_python(cfg.lambda_),
         )
         self._tools = {
             t.name: ToolDef(

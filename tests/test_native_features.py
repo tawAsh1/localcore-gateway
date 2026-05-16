@@ -133,3 +133,33 @@ def test_p4_requires_tools_or_schema_file():
                 ]
             }
         )
+
+
+async def test_python_executable_explicit(tmp_path):
+    """An explicit python path is honored (worker launched by file path)."""
+    (tmp_path / "h.py").write_text("import sys\ndef handler(e, c): return sys.executable\n")
+    cfg = LambdaFunctionConfig(backend="native", handler="h.handler", python=sys.executable)
+    inv = NativeLambdaInvoker(cfg, code_roots=[str(tmp_path)], python=sys.executable)
+    res = await inv.invoke({}, client_context={})
+    await inv.aclose()
+    assert res.payload == sys.executable
+
+
+async def test_python_executable_invalid_raises(tmp_path):
+    (tmp_path / "h.py").write_text("def handler(e, c): return 1\n")
+    cfg = LambdaFunctionConfig(backend="native", handler="h.handler")
+    inv = NativeLambdaInvoker(cfg, code_roots=[str(tmp_path)], python="/no/such/python-xyz")
+    with pytest.raises(RuntimeError, match="cannot launch worker"):
+        await inv.invoke({}, client_context={})
+    await inv.aclose()
+
+
+def test_resolved_python(tmp_path):
+    cfg = GatewayConfig()
+    cfg.source_dir = str(tmp_path)
+    path_like = LambdaFunctionConfig(backend="native", handler="h.h", python="./venv/bin/python")
+    assert cfg.resolved_python(path_like) == str((tmp_path / "venv/bin/python").resolve())
+    bare = LambdaFunctionConfig(backend="native", handler="h.h", python="python3.12")
+    assert cfg.resolved_python(bare) == "python3.12"  # PATH command, untouched
+    none = LambdaFunctionConfig(backend="native", handler="h.h")
+    assert cfg.resolved_python(none) is None
