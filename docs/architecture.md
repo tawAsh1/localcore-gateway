@@ -27,7 +27,7 @@ LambdaTarget
    │  event          = tool arguments
    │  client_context = {bedrockAgentCoreToolName: <tool>, ...}
    ▼
-LambdaInvoker  ──┬── native  (in-process emulator, no Docker)
+LambdaInvoker  ──┬── native  (subprocess worker per target, no Docker)
                  └── sam     (sam local start-lambda → real Lambda runtime)
    ▼
 return value  →  MCP tool result   (errors → MCP isError / ToolError)
@@ -55,9 +55,9 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `localcore_gateway.targets.base` | `Target` interface, `ToolDef`, `ToolOutcome` |
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
-| `localcore_gateway.lambda_emu.native` | in-process Lambda emulator (default) |
+| `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
+| `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
 | `localcore_gateway.lambda_emu.sam` | drives `sam local start-lambda` |
-| `localcore_gateway.lambda_emu.context` | faithful Lambda `context` object |
 | `localcore_gateway.app` | ASGI app assembly + uvicorn `--factory` entrypoint |
 | `localcore_gateway.__main__` | `lcgw` CLI |
 
@@ -65,9 +65,10 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 
 - **FastMCP 3.x, pinned `>=3.2,<3.3`.** The MCP/aggregation surface is reused,
   not reimplemented. Pinned because the 3.x API moves fast.
-- **One `LambdaInvoker` interface, two backends.** `native` optimizes the dev
-  loop (no Docker, instant, hot reload); `sam` optimizes fidelity (the real
-  AWS Lambda Linux runtime). Switch per target via config.
+- **One `LambdaInvoker` interface, two backends.** `native` runs one
+  subprocess worker per target (no Docker, real `sys.path`/`sys.modules`
+  isolation → monorepo-safe, hard timeout); `sam` gives full Linux-runtime
+  fidelity. Switch per target via config.
 - **Tools registered directly, not via FastMCP mount/namespace.** Each
   `(target, tool)` becomes a `GatewayTool` named `target___tool` with the
   tool's explicit JSON Schema and a closure that dispatches into the target.
@@ -76,8 +77,9 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 
 ## Known limitations
 
-- `native` timeout is *soft*: a stuck synchronous handler thread cannot be
-  hard-killed in-process. Use `sam` for true isolation / hard kill.
+- `native` is process-isolated but **not a security sandbox** (no
+  filesystem/network jail); it serializes invokes per target (one warm
+  environment — no concurrent-environment scaling).
 - `sam` per-invoke logs surface in the `sam local` console (out-of-band for
   the Invoke API), so that backend reports only an invoke summary.
 - AgentCore's builtin semantic tool search

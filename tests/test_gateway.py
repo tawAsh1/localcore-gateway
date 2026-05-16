@@ -12,10 +12,12 @@ CONFIG = Path(__file__).resolve().parents[1] / "examples" / "config.yaml"
 
 
 @pytest.fixture
-def gateway():
+async def gateway():
     cfg = load_config(CONFIG)
     mcp, targets = build_gateway(cfg)
-    return mcp, targets
+    yield mcp, targets
+    for t in targets:
+        await t.aclose()
 
 
 async def test_aggregated_tool_naming(gateway):

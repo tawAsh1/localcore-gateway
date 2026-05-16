@@ -18,10 +18,11 @@ Please include: affected version/commit, reproduction steps, and impact.
 This tool intentionally executes code with the privileges of the process that
 runs it. The following are **known, by-design behaviors, not vulnerabilities**:
 
-- The `native` Lambda backend imports and runs the configured handler **in the
-  gateway process, unsandboxed**. Listing tools alone executes handler
-  import-time code. Only point it at code you trust; use the `sam` backend for
-  isolation.
+- The `native` Lambda backend runs the configured handler in a **subprocess**
+  (isolated from the gateway process and from other targets), but this is
+  **not a security sandbox** — the handler runs with your user's privileges
+  and has full filesystem/network access. Only point it at code you trust;
+  use the `sam` backend for container-grade isolation.
 - The MCP endpoint has **no inbound authentication** (by design — local dev
   tool). Bind to loopback only; if you must expose it, put it behind your own
   proxy/auth. Do not rely on the gateway to gate access.

@@ -28,8 +28,8 @@ is for the *Runtime*, not the Gateway). This fills that gap.
 
 | backend  | Docker | fidelity | use it for |
 |----------|--------|----------|------------|
-| `native` | no     | faithful `event`/`context`, error envelope, CloudWatch-style logs, **hot reload**; *soft* timeout | the fast dev loop |
-| `sam`    | yes    | the **real** AWS Lambda Linux runtime via `sam local start-lambda`; hard timeout/isolation | fidelity check before AWS |
+| `native` | no     | **one subprocess per target** (real process isolation — monorepo-safe), faithful `event`/`context`, error envelope, CloudWatch-style logs, **hot reload**, **hard timeout** | the fast dev loop |
+| `sam`    | yes    | the **real** AWS Lambda Linux runtime via `sam local start-lambda` | full Linux-runtime fidelity check before AWS |
 
 ## Documentation
 
@@ -77,8 +77,10 @@ uv run pytest
 
 ## Known limitations
 
-- `native` timeout is *soft*: a stuck synchronous handler thread cannot be
-  hard-killed in-process (use `sam` for true isolation).
+- `native` runs your handler in a subprocess but is **not a security
+  sandbox** (no filesystem/network jail) — only point it at trusted code.
+- `native` serializes invokes per target (one warm execution environment);
+  it does not model Lambda's concurrent-environment scaling.
 - `sam` per-invoke logs appear in the `sam local` console (out-of-band for the
   Invoke API).
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)

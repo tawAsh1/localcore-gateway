@@ -19,15 +19,18 @@ from localcore_gateway.targets.base import Target, ToolDef, ToolOutcome
 class LambdaTarget(Target):
     def __init__(self, cfg: LambdaTargetConfig, gateway_cfg: GatewayConfig) -> None:
         self._cfg = cfg
-        code_root = gateway_cfg.resolved_code_root(cfg.lambda_)
-        self._invoker = make_invoker(cfg.lambda_, code_root=code_root)
+        self._invoker = make_invoker(
+            cfg.lambda_,
+            code_roots=gateway_cfg.resolved_code_roots(cfg.lambda_),
+            env_file=gateway_cfg.resolved_env_file(cfg.lambda_),
+        )
         self._tools = {
             t.name: ToolDef(
                 name=t.name,
                 description=t.description,
                 input_schema=t.input_schema,
             )
-            for t in cfg.tools
+            for t in gateway_cfg.effective_tools(cfg)
         }
 
     @property

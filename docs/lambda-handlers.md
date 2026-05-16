@@ -40,10 +40,30 @@ well-typed tools.
 
 - `module.func` — AWS-style. Dotted module path + final attribute, e.g.
   `handlers.handler`, `pkg.sub.mod.lambda_handler`. Imported from `code_root`.
-- `path/to/file.py:func` — explicit file path (relative to `code_root`) + the
-  function name.
+- `path/to/file.py:func` — explicit file path (searched across the
+  `code_root`s) + the function name.
 
-`code_root` defaults to the config file's directory.
+`code_root` defaults to the config file's directory and may be a **list** of
+directories (all go on the *worker's* `sys.path`; the first has priority).
+Relative paths resolve against the config file's directory.
+
+`env_file` (native) points at a `.env`-style file (`KEY=VALUE` per line,
+`#` comments, optional quotes, optional `export`) whose values are merged into
+the invoke environment; the inline `env` map overrides it.
+
+### Process model & isolation
+
+The `native` backend runs **each target's Lambda in its own Python
+subprocess** (one warm execution environment per target). Therefore:
+
+- The gateway process's `sys.path` / `sys.modules` are never touched.
+- Two targets whose handlers share the **same top-level module name** — the
+  monorepo norm where every service has `handler.py` — do **not** collide;
+  each worker only sees its own `code_root`s. No renaming needed.
+- `timeout_sec` is a **hard** timeout: the worker is killed and respawned.
+- It is process-isolated but **not a security sandbox** (no filesystem /
+  network jail). Only run trusted handler code; use `sam` for container-grade
+  isolation.
 
 ## `context` object
 
@@ -83,17 +103,20 @@ END RequestId: <uuid>
 REPORT RequestId: <uuid> Duration: 1.23 ms Billed Duration: 2 ms Memory Size: 128 MB Max Memory Used: 41 MB
 ```
 
-On a cold start (first call, or after the handler file changes) an
-`INIT_START` line precedes `START`.
+On a cold start an `INIT_START` line precedes `START`. A cold start happens on
+the first call, and whenever **any `*.py` under the `code_root`s changes**
+(not just the handler file) — the handler's module subtree is purged from
+`sys.modules` and re-imported, so helper-module edits are picked up too.
 
 ## native vs sam
 
 | | `native` | `sam` |
 |---|---|---|
 | Docker | no | yes |
-| Start / reload | instant, hot reload on file change | container lifecycle (restart to pick up changes) |
+| Isolation | subprocess per target (own `sys.path`/`sys.modules`) | container per function |
+| Start / reload | instant; hot reload (respawn) on any `*.py` change under `code_root` | container lifecycle (restart to pick up changes) |
 | `event` / `context` | faithful emulation | the real AWS Lambda Linux runtime |
-| Timeout | **soft** (thread not hard-killed) | hard (container isolation) |
+| Timeout | **hard** (worker killed + respawned) | hard (container) |
 | Per-invoke logs | on the gateway console | in the `sam local` console |
 | Use for | the fast dev loop | fidelity check before deploying to AWS |
 

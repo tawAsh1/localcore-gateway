@@ -31,7 +31,7 @@ def _cfg(tmp_path) -> LambdaFunctionConfig:
 
 
 async def test_event_context_and_client_context(tmp_path):
-    inv = NativeLambdaInvoker(_cfg(tmp_path), code_root=str(tmp_path))
+    inv = NativeLambdaInvoker(_cfg(tmp_path), code_roots=[str(tmp_path)])
     res = await inv.invoke({"x": 1}, client_context={"bedrockAgentCoreToolName": "echo"})
     assert not res.errored
     assert res.payload == {
@@ -43,17 +43,19 @@ async def test_event_context_and_client_context(tmp_path):
 
 
 async def test_cloudwatch_log_framing(tmp_path):
-    inv = NativeLambdaInvoker(_cfg(tmp_path), code_root=str(tmp_path))
+    inv = NativeLambdaInvoker(_cfg(tmp_path), code_roots=[str(tmp_path)])
     res = await inv.invoke({}, client_context={"bedrockAgentCoreToolName": "x"})
     text = "\n".join(res.logs)
-    assert res.logs[0].startswith("START RequestId: ")
+    # First invoke is a cold start (fresh subprocess), exactly like Lambda.
+    assert res.logs[0].startswith("INIT_START")
+    assert any(ln.startswith("START RequestId: ") for ln in res.logs)
     assert "hello from x" in text
     assert any(ln.startswith("END RequestId: ") for ln in res.logs)
     assert any(ln.startswith("REPORT RequestId: ") for ln in res.logs)
 
 
 async def test_error_envelope(tmp_path):
-    inv = NativeLambdaInvoker(_cfg(tmp_path), code_root=str(tmp_path))
+    inv = NativeLambdaInvoker(_cfg(tmp_path), code_roots=[str(tmp_path)])
     res = await inv.invoke({}, client_context={"bedrockAgentCoreToolName": "boom"})
     assert res.errored
     assert res.function_error == "Unhandled"
@@ -70,7 +72,7 @@ async def test_soft_timeout(tmp_path):
         code_root=str(tmp_path),
         timeout_sec=0.3,
     )
-    inv = NativeLambdaInvoker(cfg, code_root=str(tmp_path))
+    inv = NativeLambdaInvoker(cfg, code_roots=[str(tmp_path)])
     res = await inv.invoke({}, client_context={})
     assert res.errored
     assert res.payload["errorType"] == "TimeoutError"

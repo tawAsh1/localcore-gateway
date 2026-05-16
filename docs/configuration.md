@@ -35,7 +35,10 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 | `type` | `lambda` | `lambda` | only Lambda is implemented |
 | `name` | string | required | tools are exposed as `<name>___<tool>` |
 | `lambda` | object | required | the Lambda behind this target (below) |
-| `tools` | list | required | tools this target backs (below) |
+| `tools` | list | `[]` | inline tool specs (below) |
+| `tool_schema_file` | string | – | path to a JSON file of tool specs (AgentCore `toolSchema.inlinePayload` shape). Merged with `tools`; inline wins on name clash. Relative to the config dir |
+
+At least one of `tools` / `tool_schema_file` is required.
 
 ## `lambda` (`LambdaFunctionConfig`)
 
@@ -43,13 +46,14 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 |---|---|---|---|
 | `backend` | `native` \| `sam` | `native` | – |
 | `handler` | string | – | **native** (required): `module.func` or `path/to/file.py:func` |
-| `code_root` | string | config file dir | **native**: dir prepended to `sys.path` |
+| `code_root` | string \| list[string] | config file dir | **native**: dir(s) prepended to `sys.path`. Relative paths resolve against the config dir |
 | `sam_endpoint` | string | `http://127.0.0.1:3001` | **sam** |
 | `sam_function` | string | – | **sam** (required): logical name in the SAM template |
 | `function_name` | string | `local-function` | both (→ `context.function_name`) |
 | `memory_mb` | int | `128` | both (→ `context.memory_limit_in_mb`) |
-| `timeout_sec` | float | `30.0` | both (native = soft timeout) |
+| `timeout_sec` | float | `30.0` | both (native hard-kills the worker on timeout) |
 | `env` | map<str,str> | `{}` | both (process env during invoke) |
+| `env_file` | string | – | **native**: `.env`-style file merged into the invoke env; `env` overrides it. Relative to the config dir |
 | `region` | string | `us-east-1` | both (ARN / `AWS_REGION`) |
 
 Validation: `backend: native` requires `handler`; `backend: sam` requires

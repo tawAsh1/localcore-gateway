@@ -46,17 +46,23 @@ class LambdaInvoker(abc.ABC):
         """Release backend resources (override if needed)."""
 
 
-def make_invoker(spec: Any, *, code_root: str | None = None) -> LambdaInvoker:
+def make_invoker(
+    spec: Any,
+    *,
+    code_roots: list[str] | None = None,
+    env_file: str | None = None,
+) -> LambdaInvoker:
     """Construct the configured backend.
 
     ``spec`` is a :class:`localcore_gateway.config.LambdaFunctionConfig`.
-    ``code_root`` is the resolved import root for the native backend.
+    ``code_roots`` / ``env_file`` are resolved paths for the native backend
+    (ignored by ``sam``).
     """
     from localcore_gateway.lambda_emu.native import NativeLambdaInvoker
     from localcore_gateway.lambda_emu.sam import SamLambdaInvoker
 
     if spec.backend == "native":
-        return NativeLambdaInvoker(spec, code_root=code_root)
+        return NativeLambdaInvoker(spec, code_roots=code_roots, env_file=env_file)
     if spec.backend == "sam":
         return SamLambdaInvoker(spec)
     raise ValueError(f"unknown lambda backend: {spec.backend!r}")
