@@ -47,3 +47,19 @@ async def test_bedrock_tool_name_injected(gateway):
     outcome = await targets[0].call_tool("echo", {"message": "hi"})
     assert not outcome.is_error
     assert outcome.payload == {"echo": "hi"}
+
+
+async def test_multi_target_aggregation_and_independence(gateway):
+    """Two Lambda targets aggregate; same tool name under each is independent."""
+    mcp, targets = gateway
+    assert {t.name for t in targets} == {"demo", "math"}
+    async with Client(mcp) as client:
+        names = {t.name for t in await client.list_tools()}
+        assert {"math___add", "math___mul"} <= names
+        demo_add = await client.call_tool("demo___add", {"a": 2, "b": 40})
+        math_add = await client.call_tool("math___add", {"a": 2, "b": 40})
+        math_mul = await client.call_tool("math___mul", {"a": 6, "b": 7})
+    # demo___add and math___add are different Lambdas, different shapes.
+    assert demo_add.structured_content == {"sum": 42.0}
+    assert math_add.structured_content == {"result": 42.0}
+    assert math_mul.structured_content == {"result": 42.0}

@@ -45,3 +45,35 @@ targets:
         inputSchema:
           type: object
           properties: {}
+
+  # A SECOND Lambda target: a different function, its own tool schema set.
+  # The gateway aggregates both; tools are namespaced <target>___<tool>, so
+  # `demo___add` and `math___add` are independent. Backend is per-target:
+  # this one could be `sam` while `demo` stays `native` (commented below).
+  - type: lambda
+    name: math
+    lambda:
+      backend: native
+      handler: math_handlers.handler
+      function_name: math-fn
+      timeout_sec: 10
+      # backend: sam            # per-target backend mix is allowed
+      # sam_endpoint: http://127.0.0.1:3001
+      # sam_function: MathFunction
+    tools:
+      - name: add
+        description: Add two numbers (independent of demo___add).
+        inputSchema:
+          type: object
+          properties:
+            a: { type: number }
+            b: { type: number }
+          required: [a, b]
+      - name: mul
+        description: Multiply two numbers.
+        inputSchema:
+          type: object
+          properties:
+            a: { type: number }
+            b: { type: number }
+          required: [a, b]
