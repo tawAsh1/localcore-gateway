@@ -6,6 +6,10 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any
 
+# AgentCore Gateway tool-name convention: <target>___<tool>. Kept here (the
+# leaf module) so both the gateway and targets can use it without a cycle.
+NAME_SEP = "___"
+
 
 @dataclass
 class ToolDef:
@@ -14,6 +18,7 @@ class ToolDef:
     name: str
     description: str
     input_schema: dict[str, Any]
+    output_schema: dict[str, Any] | None = None
 
 
 @dataclass

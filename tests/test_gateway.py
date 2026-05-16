@@ -44,7 +44,7 @@ async def test_lambda_error_surfaces_as_tool_error(gateway):
 
 
 async def test_bedrock_tool_name_injected(gateway):
-    """The Lambda must see bedrockAgentCoreToolName == the un-prefixed tool."""
+    """End-to-end: handler strips the `___` prefix (AWS pattern) and branches."""
     _, targets = gateway
     outcome = await targets[0].call_tool("echo", {"message": "hi"})
     assert not outcome.is_error

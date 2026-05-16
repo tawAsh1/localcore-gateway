@@ -11,7 +11,7 @@ Full working example: [`examples/config.yaml`](../examples/config.yaml).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `targets` | list | `[]` | gateway targets (currently `lambda` only) |
+| `targets` | list | `[]` | gateway targets; each is `type: lambda` or `type: openapi` (mixable) |
 
 ## `server` (`ServerConfig`)
 
@@ -28,17 +28,62 @@ There is **no inbound authentication** (this is a local dev tool). Bind to
 loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
-## A target (`LambdaTargetConfig`)
+`targets` is a list; each entry is discriminated by `type` (`lambda` or
+`openapi`). You can mix both.
+
+## A Lambda target (`type: lambda`)
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `type` | `lambda` | `lambda` | only Lambda is implemented |
+| `type` | `lambda` | `lambda` | |
 | `name` | string | required | tools are exposed as `<name>___<tool>` |
 | `lambda` | object | required | the Lambda behind this target (below) |
 | `tools` | list | `[]` | inline tool specs (below) |
 | `tool_schema_file` | string | – | path to a JSON file of tool specs (AgentCore `toolSchema.inlinePayload` shape). Merged with `tools`; inline wins on name clash. Relative to the config dir |
 
 At least one of `tools` / `tool_schema_file` is required.
+
+## An OpenAPI target (`type: openapi`)
+
+A REST API's OpenAPI spec becomes MCP tools. **Faithful to AgentCore**: the
+tool name is each operation's `operationId` **verbatim** (operationId is
+**required** on every operation — a missing one is a config error), and the
+spec's own `securitySchemes` are ignored — outbound auth is configured here.
+FastMCP does the spec→HTTP translation; OpenAPI 3.0/3.1, JSON-centric (same
+support envelope as the real gateway — `oneOf`/`anyOf`/`allOf` and complex
+parameter serializers are unsupported upstream).
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `openapi` | `openapi` | |
+| `name` | string | required | tools are `<name>___<operationId>` |
+| `spec` | object | – | inline OpenAPI 3.0/3.1 spec |
+| `spec_file` | string | – | path to a spec (JSON/YAML), relative to the config dir |
+| `base_url` | string | spec `servers[0].url` | override the API base URL |
+| `timeout_sec` | float | `30.0` | per-request timeout |
+| `auth` | object | `{type: none}` | outbound auth (below) |
+
+Exactly one of `spec` / `spec_file` is required.
+
+### `auth` (`OpenAPIAuthConfig`) — outbound
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `none` \| `apikey` \| `bearer` | `none` | |
+| `in` | `header` \| `query` | `header` | where the API key goes (`apikey`) |
+| `name` | string | `X-API-Key` | header/query param name (`apikey`) |
+| `value` | string | – | the key / token (required for `apikey` / `bearer`) |
+
+`bearer` sends `Authorization: Bearer <value>`. OAuth 2LO is not supported
+(intentionally out of scope locally).
+
+```yaml
+targets:
+  - type: openapi
+    name: weather
+    spec_file: openapi.yaml
+    auth: { type: apikey, in: header, name: X-API-Key, value: "${KEY}" }
+```
 
 ## `lambda` (`LambdaFunctionConfig`)
 
@@ -67,8 +112,10 @@ Validation: `backend: native` requires `handler`; `backend: sam` requires
 | `name` | string | required | un-prefixed tool name |
 | `description` | string | `""` | shown in `tools/list` |
 | `inputSchema` | object | `{"type":"object","properties":{}}` | JSON Schema for the tool's arguments (AgentCore `toolSchema.inlinePayload`) |
+| `outputSchema` | object | – | optional output schema (AgentCore `ToolDefinition.outputSchema`); advertised via MCP `tools/list` |
 
-`inputSchema` may also be written as `input_schema`.
+`inputSchema` / `outputSchema` may also be written as `input_schema` /
+`output_schema`.
 
 ## Minimal example
 

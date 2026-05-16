@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -76,6 +76,11 @@ class ToolSpec(BaseModel):
         default_factory=lambda: {"type": "object", "properties": {}},
         alias="inputSchema",
     )
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        alias="outputSchema",
+        description="Optional output schema (AgentCore ToolDefinition.outputSchema); advertised via MCP tools/list.",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -104,6 +109,62 @@ class LambdaTargetConfig(BaseModel):
         return self
 
 
+class OpenAPIAuthConfig(BaseModel):
+    """Outbound auth to the REST API (AgentCore credential-provider analog).
+
+    Mirrors what AgentCore supports for OpenAPI targets: a static API key in a
+    header or query param (custom name), or a bearer token. OAuth 2LO is
+    intentionally out of scope locally.
+    """
+
+    type: Literal["none", "apikey", "bearer"] = "none"
+    in_: Literal["header", "query"] = Field(default="header", alias="in")
+    name: str = "X-API-Key"
+    value: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _check(self) -> OpenAPIAuthConfig:
+        if self.type in ("apikey", "bearer") and not self.value:
+            raise ValueError(f"auth.value is required when type={self.type}")
+        return self
+
+
+class OpenAPITargetConfig(BaseModel):
+    """An OpenAPI gateway target: a REST API exposed as MCP tools.
+
+    Faithful to AgentCore: tool name = the operation's ``operationId``
+    (verbatim; operationId is REQUIRED on every operation), spec-level
+    security schemes are ignored (auth is configured here, out of band).
+    """
+
+    type: Literal["openapi"] = "openapi"
+    name: str = Field(description="Target name; tools are '<name>___<operationId>'.")
+    spec: dict[str, Any] | None = Field(default=None, description="Inline OpenAPI 3.0/3.1 spec.")
+    spec_file: str | None = Field(
+        default=None,
+        description="Path to an OpenAPI spec (JSON/YAML), relative to the "
+        "config file's directory. Exactly one of spec / spec_file.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Override the API base URL (else the spec's first servers[].url is used).",
+    )
+    timeout_sec: float = 30.0
+    auth: OpenAPIAuthConfig = Field(default_factory=OpenAPIAuthConfig)
+
+    @model_validator(mode="after")
+    def _check_spec(self) -> OpenAPITargetConfig:
+        if bool(self.spec) == bool(self.spec_file):
+            raise ValueError("exactly one of `spec` / `spec_file` is required")
+        return self
+
+
+# Discriminated by `type`.
+TargetConfig = Annotated[LambdaTargetConfig | OpenAPITargetConfig, Field(discriminator="type")]
+
+
 class ServerConfig(BaseModel):
     name: str = "localcore-gateway"
     host: str = "127.0.0.1"
@@ -113,7 +174,7 @@ class ServerConfig(BaseModel):
 
 class GatewayConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
-    targets: list[LambdaTargetConfig] = Field(default_factory=list)
+    targets: list[TargetConfig] = Field(default_factory=list)
 
     # Set by the loader; the directory of the config file.
     source_dir: str | None = None
@@ -169,6 +230,31 @@ class GatewayConfig(BaseModel):
         for spec in tc.tools:
             merged[spec.name] = spec
         return list(merged.values())
+
+    def openapi_spec(self, tc: OpenAPITargetConfig) -> dict[str, Any]:
+        """The OpenAPI spec dict (inline or loaded from spec_file; JSON/YAML)."""
+        if tc.spec is not None:
+            return tc.spec
+        raw = yaml.safe_load(self._resolve(tc.spec_file).read_text())
+        if not isinstance(raw, dict):
+            # ValueError (not TypeError): a malformed config/spec file, surfaced
+            # like the rest of config validation.
+            raise ValueError(  # noqa: TRY004
+                f"{tc.spec_file}: OpenAPI spec must be a mapping"
+            )
+        return raw
+
+    def openapi_base_url(self, tc: OpenAPITargetConfig) -> str:
+        """base_url override, else the spec's first servers[].url."""
+        if tc.base_url:
+            return tc.base_url
+        servers = self.openapi_spec(tc).get("servers") or []
+        url = servers[0].get("url") if servers else None
+        if not url:
+            raise ValueError(f"openapi target {tc.name!r}: no base_url and no servers[].url")
+        for k, v in (servers[0].get("variables") or {}).items():
+            url = url.replace(f"{{{k}}}", str(v.get("default", "")))
+        return url
 
 
 def load_config(path: str | Path) -> GatewayConfig:

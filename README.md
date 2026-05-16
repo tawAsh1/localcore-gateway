@@ -27,6 +27,10 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   **event**; the tool identity is delivered via
   `context.client_context.custom['bedrockAgentCoreToolName']`; the Lambda's
   return value becomes the tool result.
+- **OpenAPI targets** — a REST API's spec becomes MCP tools; the tool name is
+  the operation's `operationId` **verbatim** (as the real gateway does, not a
+  slugified form), spec-level security is ignored (auth configured out of
+  band).
 
 ## Local Lambda backends
 
@@ -121,8 +125,9 @@ tools; the handler branches on `bedrockAgentCoreToolName`.
   Invoke API).
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)
   is **not implemented** (intentionally omitted).
-- Target types beyond Lambda (OpenAPI, MCP passthrough, Smithy) are not yet
-  implemented.
+- Target types: **Lambda** and **OpenAPI** are implemented; MCP-passthrough
+  and Smithy are not yet. OpenAPI outbound auth covers static API key
+  (header/query) and bearer; OAuth 2LO is out of scope.
 
 ## License
 
