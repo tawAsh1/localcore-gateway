@@ -7,10 +7,14 @@ different Lambda function from ``handlers.py``. Its ``add`` is independent of
 
 from __future__ import annotations
 
+SEP = "___"
+
 
 def handler(event, context):
-    tool = (getattr(context.client_context, "custom", {}) or {}).get("bedrockAgentCoreToolName", "unknown")
-    print(f"[math] tool={tool} event={event}")
+    custom = getattr(context.client_context, "custom", {}) or {}
+    full = custom.get("bedrockAgentCoreToolName", "unknown")
+    tool = full.split(SEP, 1)[1] if SEP in full else full
+    print(f"[math] tool={tool} (full={full}) event={event}")
 
     if tool == "add":
         return {"result": float(event["a"]) + float(event["b"])}

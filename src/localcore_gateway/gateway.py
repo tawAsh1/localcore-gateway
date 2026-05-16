@@ -22,12 +22,12 @@ from fastmcp.tools import Tool, ToolResult
 from pydantic.json_schema import SkipJsonSchema
 
 from localcore_gateway.config import GatewayConfig
-from localcore_gateway.targets.base import Target
+from localcore_gateway.targets.base import NAME_SEP, Target
 from localcore_gateway.targets.lambda_target import LambdaTarget
 
 log = logging.getLogger("lcgw")
 
-NAME_SEP = "___"  # AgentCore Gateway tool-name convention
+__all__ = ["NAME_SEP", "build_gateway", "build_targets"]
 
 
 def _to_tool_result(payload: Any) -> ToolResult:
@@ -73,6 +73,10 @@ def build_targets(cfg: GatewayConfig) -> list[Target]:
     for tc in cfg.targets:
         if tc.type == "lambda":
             targets.append(LambdaTarget(tc, cfg))
+        elif tc.type == "openapi":
+            from localcore_gateway.targets.openapi_target import OpenAPITarget
+
+            targets.append(OpenAPITarget(tc, cfg))
         else:  # pragma: no cover - config validation prevents this
             raise ValueError(f"unsupported target type: {tc.type!r}")
     return targets
@@ -88,12 +92,16 @@ def build_gateway(cfg: GatewayConfig) -> tuple[FastMCP, list[Target]]:
     tool_count = 0
     for target in targets:
         for td in target.list_tools():
+            kw: dict[str, Any] = {}
+            if td.output_schema is not None:
+                kw["output_schema"] = td.output_schema
             mcp.add_tool(
                 GatewayTool(
                     name=f"{target.name}{NAME_SEP}{td.name}",
                     description=td.description,
                     parameters=td.input_schema or {"type": "object"},
                     dispatch=_make_dispatch(target, td.name),
+                    **kw,
                 )
             )
             tool_count += 1

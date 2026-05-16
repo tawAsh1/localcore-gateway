@@ -54,6 +54,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `localcore_gateway.gateway` | builds the FastMCP server, `GatewayTool`, target aggregation |
 | `localcore_gateway.targets.base` | `Target` interface, `ToolDef`, `ToolOutcome` |
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
+| `localcore_gateway.targets.openapi_target` | OpenAPI → MCP (FastMCP engine, verbatim `operationId` naming, outbound auth) |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
@@ -84,5 +85,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
   the Invoke API), so that backend reports only an invoke summary.
 - AgentCore's builtin semantic tool search
   (`x_amz_bedrock_agentcore_search`) is intentionally not implemented.
-- Only the Lambda target type is implemented (OpenAPI / MCP-passthrough /
-  Smithy are not).
+- Lambda and OpenAPI target types are implemented; MCP-passthrough and
+  Smithy are not. OpenAPI reuses FastMCP's spec→HTTP engine but overrides
+  naming to the verbatim `operationId` for AgentCore fidelity; outbound auth
+  is static API key (header/query) or bearer only (no OAuth 2LO).

@@ -10,24 +10,34 @@ Reference handler: [`examples/handlers.py`](../examples/handlers.py).
 AgentCore Gateway invokes the Lambda with:
 
 - **`event`** = the tool's input arguments (the MCP `arguments` object).
-- **`context.client_context.custom`** = identity of the call:
-  - `bedrockAgentCoreToolName` — the **un-prefixed** tool name (`add`, not
-    `demo___add`)
-  - `bedrockAgentCoreGatewayId`, `bedrockAgentCoreTargetName` — the target name
+- **`context.client_context.custom`** — matches the AWS docs:
+  - `bedrockAgentCoreToolName` — the **prefixed** `<target>___<tool>` name
+    (e.g. `demo___add`). The handler strips the `___` prefix itself (the
+    AWS-documented pattern).
+  - `bedrockAgentCoreMessageVersion` (`"1.0"`),
+    `bedrockAgentCoreAwsRequestId`, `bedrockAgentCoreMcpMessageId`,
+    `bedrockAgentCoreGatewayId`, `bedrockAgentCoreTargetId`
 
 The handler's **return value** becomes the MCP tool result. A raised exception
 becomes a Lambda error envelope and surfaces to the MCP client as a tool error.
+If a tool declares an `outputSchema` (config — see configuration.md), it is
+advertised via MCP `tools/list`.
 
 ```python
+SEP = "___"
+
 def handler(event, context):
-    custom = context.client_context.custom
-    tool = custom.get("bedrockAgentCoreToolName")
+    full = context.client_context.custom["bedrockAgentCoreToolName"]
+    tool = full.split(SEP, 1)[1] if SEP in full else full  # strip prefix
     if tool == "add":
         return {"sum": event["a"] + event["b"]}
     if tool == "weather":
         return {"city": event.get("city", "Tokyo"), "tempC": 21}
     raise ValueError(f"no branch for tool {tool!r}")
 ```
+
+This is exactly the handler pattern AWS documents, so code written for the
+real gateway runs unchanged here (and vice versa).
 
 ## One Lambda, many tools
 
