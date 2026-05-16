@@ -6,6 +6,22 @@ readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
+keywords = [
+    "aws", "bedrock", "agentcore", "gateway", "mcp",
+    "model-context-protocol", "lambda", "local", "emulator", "agents",
+]
+# No "License ::" classifier: PEP 639 SPDX `license` is used instead.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     # MCP server + gateway aggregation surface (do NOT hand-roll JSON-RPC).
     # Pinned: FastMCP 3.x API moves fast.
@@ -18,6 +34,13 @@ dependencies = [
 
 [project.scripts]
 lcgw = "localcore_gateway.__main__:main"
+
+# NOTE: confirm the GitHub slug matches the repo (and the PyPI Trusted
+# Publisher form + the README CI badge).
+[project.urls]
+Homepage = "https://github.com/tawAsh1/localcore-gateway"
+Repository = "https://github.com/tawAsh1/localcore-gateway"
+Issues = "https://github.com/tawAsh1/localcore-gateway/issues"
 
 [build-system]
 requires = ["hatchling"]

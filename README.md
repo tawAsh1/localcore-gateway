@@ -12,6 +12,9 @@ the real AWS gateway with no code changes.
 There is no official local emulator for AgentCore Gateway (AWS's `agentcore dev`
 is for the *Runtime*, not the Gateway). This fills that gap.
 
+> **0.x — unstable.** The CLI flags and config schema may change between
+> minor releases until 1.0. Pin a version if you depend on it.
+
 ## What it reproduces
 
 - **MCP Streamable-HTTP at `/mcp`** — the same wire surface as the real gateway
