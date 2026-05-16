@@ -13,10 +13,7 @@ def handler(event, context):
     tool = custom.get("bedrockAgentCoreToolName", "unknown")
 
     # Lambda logs -> CloudWatch (the gateway surfaces these in its console).
-    print(
-        f"invoked tool={tool} event={event} "
-        f"remaining_ms={context.get_remaining_time_in_millis()}"
-    )
+    print(f"invoked tool={tool} event={event} remaining_ms={context.get_remaining_time_in_millis()}")
 
     if tool == "echo":
         return {"echo": event.get("message", "")}

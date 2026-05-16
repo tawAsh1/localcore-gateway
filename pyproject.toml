@@ -34,7 +34,7 @@ packages = ["src/localcore_gateway"]
 exclude-newer = "2026-05-09T00:00:00Z"
 
 [tool.ruff]
-line-length = 88
+line-length = 120
 target-version = "py311"
 src = ["src", "tests"]
 

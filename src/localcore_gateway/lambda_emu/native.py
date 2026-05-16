@@ -96,9 +96,7 @@ class _HandlerRef:
 
 
 class NativeLambdaInvoker(LambdaInvoker):
-    def __init__(
-        self, cfg: LambdaFunctionConfig, *, code_root: str | None = None
-    ) -> None:
+    def __init__(self, cfg: LambdaFunctionConfig, *, code_root: str | None = None) -> None:
         self._cfg = cfg
         self._handler = _HandlerRef(cfg.handler, code_root or cfg.code_root or ".")
         self._lock = asyncio.Lock()  # one warm execution environment
@@ -118,9 +116,7 @@ class NativeLambdaInvoker(LambdaInvoker):
                 logs.append("INIT_START Runtime Version: python (cold start)")
             fn = self._handler.resolve()
 
-            arn = (
-                f"arn:aws:lambda:{cfg.region}:000000000000:function:{cfg.function_name}"
-            )
+            arn = f"arn:aws:lambda:{cfg.region}:000000000000:function:{cfg.function_name}"
             log_stream = time.strftime("%Y/%m/%d/[$LATEST]") + req_id.replace("-", "")
             ctx = LambdaContext(
                 function_name=cfg.function_name,
@@ -146,8 +142,7 @@ class NativeLambdaInvoker(LambdaInvoker):
             except _TimeoutError:
                 function_error = "Unhandled"
                 payload = {
-                    "errorMessage": f"{req_id} Task timed out after "
-                    f"{cfg.timeout_sec:.2f} seconds",
+                    "errorMessage": f"{req_id} Task timed out after {cfg.timeout_sec:.2f} seconds",
                     "errorType": "TimeoutError",
                 }
                 buf.write(
@@ -177,9 +172,7 @@ class NativeLambdaInvoker(LambdaInvoker):
                 f"Memory Size: {cfg.memory_mb} MB "
                 f"Max Memory Used: {_max_rss_mb()} MB"
             )
-            return InvokeResult(
-                payload=payload, function_error=function_error, logs=logs
-            )
+            return InvokeResult(payload=payload, function_error=function_error, logs=logs)
 
     async def _call(
         self,

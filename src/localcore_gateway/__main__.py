@@ -139,15 +139,12 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging()
     p = argparse.ArgumentParser(
         prog="lcgw",
-        description="Local AWS Bedrock AgentCore "
-        "Gateway (with a local Lambda backend).",
+        description="Local AWS Bedrock AgentCore Gateway (with a local Lambda backend).",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_cfg(sp: argparse.ArgumentParser) -> None:
-        sp.add_argument(
-            "-c", "--config", required=True, help="path to gateway config YAML"
-        )
+        sp.add_argument("-c", "--config", required=True, help="path to gateway config YAML")
 
     sp = sub.add_parser("serve", help="serve the MCP gateway")
     add_cfg(sp)

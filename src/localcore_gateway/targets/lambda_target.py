@@ -41,8 +41,7 @@ class LambdaTarget(Target):
         if tool_name not in self._tools:
             return ToolOutcome(
                 payload={
-                    "errorMessage": f"unknown tool {tool_name!r} on target "
-                    f"{self._cfg.name!r}",
+                    "errorMessage": f"unknown tool {tool_name!r} on target {self._cfg.name!r}",
                     "errorType": "ToolNotFound",
                 },
                 is_error=True,

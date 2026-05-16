@@ -51,9 +51,7 @@ class SamLambdaInvoker(LambdaInvoker):
             cc = json.dumps({"custom": client_context}).encode()
             headers["X-Amz-Client-Context"] = base64.b64encode(cc).decode()
 
-        resp = await self._client.post(
-            url, content=json.dumps(event).encode(), headers=headers
-        )
+        resp = await self._client.post(url, content=json.dumps(event).encode(), headers=headers)
         function_error = resp.headers.get("X-Amz-Function-Error")
         try:
             payload = resp.json()
@@ -66,8 +64,7 @@ class SamLambdaInvoker(LambdaInvoker):
         ]
         return InvokeResult(
             payload=payload,
-            function_error=function_error
-            or ("Unhandled" if resp.status_code >= 300 else None),
+            function_error=function_error or ("Unhandled" if resp.status_code >= 300 else None),
             logs=logs,
         )
 

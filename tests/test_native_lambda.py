@@ -32,9 +32,7 @@ def _cfg(tmp_path) -> LambdaFunctionConfig:
 
 async def test_event_context_and_client_context(tmp_path):
     inv = NativeLambdaInvoker(_cfg(tmp_path), code_root=str(tmp_path))
-    res = await inv.invoke(
-        {"x": 1}, client_context={"bedrockAgentCoreToolName": "echo"}
-    )
+    res = await inv.invoke({"x": 1}, client_context={"bedrockAgentCoreToolName": "echo"})
     assert not res.errored
     assert res.payload == {
         "tool": "echo",
@@ -65,9 +63,7 @@ async def test_error_envelope(tmp_path):
 
 
 async def test_soft_timeout(tmp_path):
-    (tmp_path / "slow.py").write_text(
-        "import time\ndef handler(e, c):\n    time.sleep(5)\n    return 1\n"
-    )
+    (tmp_path / "slow.py").write_text("import time\ndef handler(e, c):\n    time.sleep(5)\n    return 1\n")
     cfg = LambdaFunctionConfig(
         backend="native",
         handler="slow.handler",

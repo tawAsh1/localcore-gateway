@@ -17,8 +17,7 @@ class LambdaFunctionConfig(BaseModel):
     # --- native backend ---
     handler: str | None = Field(
         default=None,
-        description="AWS-style 'module.func', or 'path/to/file.py:func'. "
-        "Required for backend=native.",
+        description="AWS-style 'module.func', or 'path/to/file.py:func'. Required for backend=native.",
     )
     code_root: str | None = Field(
         default=None,
@@ -33,8 +32,7 @@ class LambdaFunctionConfig(BaseModel):
     )
     sam_function: str | None = Field(
         default=None,
-        description="Logical function name in the SAM template. "
-        "Required for backend=sam.",
+        description="Logical function name in the SAM template. Required for backend=sam.",
     )
 
     # --- shared, faithful Lambda config knobs ---
@@ -70,9 +68,7 @@ class LambdaTargetConfig(BaseModel):
     """A Lambda gateway target: a function + the tools it backs."""
 
     type: Literal["lambda"] = "lambda"
-    name: str = Field(
-        description="Target name; tools are exposed as '<name>___<tool>'."
-    )
+    name: str = Field(description="Target name; tools are exposed as '<name>___<tool>'.")
     lambda_: LambdaFunctionConfig = Field(alias="lambda")
     tools: list[ToolSpec]
 
