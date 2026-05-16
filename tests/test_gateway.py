@@ -37,9 +37,8 @@ async def test_call_tool_end_to_end(gateway):
 async def test_lambda_error_surfaces_as_tool_error(gateway):
     mcp, _ = gateway
     async with Client(mcp) as client:
-        with pytest.raises(Exception) as ei:
+        with pytest.raises(Exception, match="intentional failure"):
             await client.call_tool("demo___boom", {})
-    assert "intentional failure" in str(ei.value)
 
 
 async def test_bedrock_tool_name_injected(gateway):

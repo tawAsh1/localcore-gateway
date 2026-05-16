@@ -45,7 +45,7 @@ class LambdaFunctionConfig(BaseModel):
     region: str = "us-east-1"
 
     @model_validator(mode="after")
-    def _check_backend(self) -> "LambdaFunctionConfig":
+    def _check_backend(self) -> LambdaFunctionConfig:
         if self.backend == "native" and not self.handler:
             raise ValueError("lambda.handler is required when backend=native")
         if self.backend == "sam" and not self.sam_function:
@@ -70,8 +70,9 @@ class LambdaTargetConfig(BaseModel):
     """A Lambda gateway target: a function + the tools it backs."""
 
     type: Literal["lambda"] = "lambda"
-    name: str = Field(description="Target name; tools are exposed as "
-                       "'<name>___<tool>'.")
+    name: str = Field(
+        description="Target name; tools are exposed as '<name>___<tool>'."
+    )
     lambda_: LambdaFunctionConfig = Field(alias="lambda")
     tools: list[ToolSpec]
 
@@ -87,7 +88,7 @@ class AuthConfig(BaseModel):
     audience: str | None = None
 
     @model_validator(mode="after")
-    def _check(self) -> "AuthConfig":
+    def _check(self) -> AuthConfig:
         if self.mode == "jwt" and not (self.jwks_uri or self.issuer):
             raise ValueError("auth.jwt requires at least jwks_uri or issuer")
         return self

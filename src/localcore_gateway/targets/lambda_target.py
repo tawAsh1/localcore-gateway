@@ -37,9 +37,7 @@ class LambdaTarget(Target):
     def list_tools(self) -> list[ToolDef]:
         return list(self._tools.values())
 
-    async def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> ToolOutcome:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolOutcome:
         if tool_name not in self._tools:
             return ToolOutcome(
                 payload={
@@ -57,9 +55,7 @@ class LambdaTarget(Target):
             "bedrockAgentCoreGatewayId": self._cfg.name,
             "bedrockAgentCoreTargetName": self._cfg.name,
         }
-        result = await self._invoker.invoke(
-            arguments, client_context=client_context
-        )
+        result = await self._invoker.invoke(arguments, client_context=client_context)
         return ToolOutcome(
             payload=result.payload,
             is_error=result.errored,

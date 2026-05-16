@@ -18,4 +18,4 @@ fidelity before deploying to real AWS.
 
 from localcore_gateway.lambda_emu.base import InvokeResult, LambdaInvoker, make_invoker
 
-__all__ = ["LambdaInvoker", "InvokeResult", "make_invoker"]
+__all__ = ["InvokeResult", "LambdaInvoker", "make_invoker"]

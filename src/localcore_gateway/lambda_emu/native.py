@@ -26,8 +26,9 @@ import sys
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from localcore_gateway.config import LambdaFunctionConfig
 from localcore_gateway.lambda_emu.base import InvokeResult, LambdaInvoker
@@ -86,14 +87,18 @@ class _HandlerRef:
     def resolve(self) -> Callable[..., Any]:
         fn = getattr(self._mod, self._attr, None)
         if not callable(fn):
-            raise AttributeError(
+            # AttributeError (not TypeError): covers both "attr missing" and
+            # "found but not callable" -- both are handler misconfiguration.
+            raise AttributeError(  # noqa: TRY004
                 f"handler {self._attr!r} not found / not callable in {self._spec}"
             )
         return fn
 
 
 class NativeLambdaInvoker(LambdaInvoker):
-    def __init__(self, cfg: LambdaFunctionConfig, *, code_root: str | None = None) -> None:
+    def __init__(
+        self, cfg: LambdaFunctionConfig, *, code_root: str | None = None
+    ) -> None:
         self._cfg = cfg
         self._handler = _HandlerRef(cfg.handler, code_root or cfg.code_root or ".")
         self._lock = asyncio.Lock()  # one warm execution environment
@@ -110,20 +115,20 @@ class NativeLambdaInvoker(LambdaInvoker):
         async with self._lock:
             cold = self._handler.maybe_reload()
             if cold:
-                logs.append(f"INIT_START Runtime Version: python (cold start)")
+                logs.append("INIT_START Runtime Version: python (cold start)")
             fn = self._handler.resolve()
 
             arn = (
-                f"arn:aws:lambda:{cfg.region}:000000000000:"
-                f"function:{cfg.function_name}"
+                f"arn:aws:lambda:{cfg.region}:000000000000:function:{cfg.function_name}"
             )
+            log_stream = time.strftime("%Y/%m/%d/[$LATEST]") + req_id.replace("-", "")
             ctx = LambdaContext(
                 function_name=cfg.function_name,
                 invoked_function_arn=arn,
                 memory_limit_in_mb=cfg.memory_mb,
                 aws_request_id=req_id,
                 log_group_name=f"/aws/lambda/{cfg.function_name}",
-                log_stream_name=time.strftime("%Y/%m/%d/[$LATEST]") + req_id.replace("-", ""),
+                log_stream_name=log_stream,
                 deadline_ms=time.time() * 1000.0 + cfg.timeout_sec * 1000.0,
                 client_context=ClientContext(custom=dict(client_context or {})),
             )
@@ -138,7 +143,7 @@ class NativeLambdaInvoker(LambdaInvoker):
             try:
                 with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     payload = await self._call(fn, event, ctx, cfg.timeout_sec)
-            except _Timeout:
+            except _TimeoutError:
                 function_error = "Unhandled"
                 payload = {
                     "errorMessage": f"{req_id} Task timed out after "
@@ -149,22 +154,21 @@ class NativeLambdaInvoker(LambdaInvoker):
                     f"\n{time.strftime('%Y-%m-%dT%H:%M:%SZ')} {req_id} Task "
                     f"timed out after {cfg.timeout_sec:.2f} seconds\n"
                 )
-            except BaseException as exc:  # handler raised -> Lambda error envelope
+            # Lambda emulator must turn ANY handler failure into the error
+            # envelope, exactly as AWS Lambda does (hence the broad catch).
+            except BaseException as exc:  # noqa: BLE001
                 function_error = "Unhandled"
                 payload = {
                     "errorMessage": str(exc),
                     "errorType": type(exc).__name__,
                     "stackTrace": traceback.format_tb(exc.__traceback__),
                 }
-                buf.write(
-                    "".join(traceback.format_exception(exc)) + "\n"
-                )
+                buf.write("".join(traceback.format_exception(exc)) + "\n")
             finally:
                 _restore_env(prev_env)
 
             dur_ms = (time.perf_counter() - start) * 1000.0
-            for line in buf.getvalue().splitlines():
-                logs.append(line)
+            logs.extend(buf.getvalue().splitlines())
             logs.append(f"END RequestId: {req_id}")
             logs.append(
                 f"REPORT RequestId: {req_id} "
@@ -178,23 +182,25 @@ class NativeLambdaInvoker(LambdaInvoker):
             )
 
     async def _call(
-        self, fn: Callable[..., Any], event: Any, ctx: LambdaContext, timeout: float
+        self,
+        fn: Callable[..., Any],
+        event: Any,
+        ctx: LambdaContext,
+        timeout_s: float,
     ) -> Any:
         if inspect.iscoroutinefunction(fn):
             try:
-                return await asyncio.wait_for(fn(event, ctx), timeout)
-            except asyncio.TimeoutError:
-                raise _Timeout from None
+                return await asyncio.wait_for(fn(event, ctx), timeout_s)
+            except TimeoutError:
+                raise _TimeoutError from None
         # sync handler: offload; cannot hard-cancel the thread (soft timeout).
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(fn, event, ctx), timeout
-            )
-        except asyncio.TimeoutError:
-            raise _Timeout from None
+            return await asyncio.wait_for(asyncio.to_thread(fn, event, ctx), timeout_s)
+        except TimeoutError:
+            raise _TimeoutError from None
 
 
-class _Timeout(Exception):
+class _TimeoutError(Exception):
     pass
 
 
@@ -230,5 +236,5 @@ def _max_rss_mb() -> int:
         rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # Linux reports KB, macOS reports bytes.
         return int(rss / (1024 if sys.platform != "darwin" else 1024 * 1024))
-    except Exception:
-        return 0
+    except Exception:  # noqa: BLE001
+        return 0  # best-effort metric; never fail an invoke over it

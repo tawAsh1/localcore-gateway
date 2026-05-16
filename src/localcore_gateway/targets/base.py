@@ -32,14 +32,11 @@ class Target(abc.ABC):
         """Target name; tools are exposed as ``<name>___<tool>``."""
 
     @abc.abstractmethod
-    def list_tools(self) -> list[ToolDef]:
-        ...
+    def list_tools(self) -> list[ToolDef]: ...
 
     @abc.abstractmethod
-    async def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> ToolOutcome:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolOutcome:
         """Invoke ``tool_name`` (the un-prefixed name) with ``arguments``."""
 
-    async def aclose(self) -> None:
-        ...
+    async def aclose(self) -> None:  # noqa: B027  # optional no-op hook
+        """Release target resources (override if needed)."""

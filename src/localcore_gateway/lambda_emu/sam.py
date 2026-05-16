@@ -57,8 +57,8 @@ class SamLambdaInvoker(LambdaInvoker):
         function_error = resp.headers.get("X-Amz-Function-Error")
         try:
             payload = resp.json()
-        except Exception:
-            payload = resp.text
+        except Exception:  # noqa: BLE001
+            payload = resp.text  # non-JSON body -> pass through as text
 
         logs = [
             f"[sam] invoked {fn} via {self._cfg.sam_endpoint} "
@@ -66,9 +66,8 @@ class SamLambdaInvoker(LambdaInvoker):
         ]
         return InvokeResult(
             payload=payload,
-            function_error=function_error or (
-                "Unhandled" if resp.status_code >= 300 else None
-            ),
+            function_error=function_error
+            or ("Unhandled" if resp.status_code >= 300 else None),
             logs=logs,
         )
 

@@ -86,16 +86,15 @@ def _cmd_dev(args: argparse.Namespace) -> int:
 def _cmd_tools(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     targets = build_targets(cfg)
-    out = []
-    for t in targets:
-        for td in t.list_tools():
-            out.append(
-                {
-                    "name": f"{t.name}{NAME_SEP}{td.name}",
-                    "description": td.description,
-                    "inputSchema": td.input_schema,
-                }
-            )
+    out = [
+        {
+            "name": f"{t.name}{NAME_SEP}{td.name}",
+            "description": td.description,
+            "inputSchema": td.input_schema,
+        }
+        for t in targets
+        for td in t.list_tools()
+    ]
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
 
@@ -123,10 +122,14 @@ def _cmd_invoke(args: argparse.Namespace) -> int:
             await target.aclose()
         for line in outcome.logs:
             print(line, file=sys.stderr)
-        print(json.dumps(
-            {"isError": outcome.is_error, "payload": outcome.payload},
-            indent=2, ensure_ascii=False, default=str,
-        ))
+        print(
+            json.dumps(
+                {"isError": outcome.is_error, "payload": outcome.payload},
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
         return 1 if outcome.is_error else 0
 
     return asyncio.run(_run())
@@ -134,14 +137,17 @@ def _cmd_invoke(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     _setup_logging()
-    p = argparse.ArgumentParser(prog="lcgw",
-                                description="Local AWS Bedrock AgentCore "
-                                "Gateway (with a local Lambda backend).")
+    p = argparse.ArgumentParser(
+        prog="lcgw",
+        description="Local AWS Bedrock AgentCore "
+        "Gateway (with a local Lambda backend).",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_cfg(sp: argparse.ArgumentParser) -> None:
-        sp.add_argument("-c", "--config", required=True,
-                        help="path to gateway config YAML")
+        sp.add_argument(
+            "-c", "--config", required=True, help="path to gateway config YAML"
+        )
 
     sp = sub.add_parser("serve", help="serve the MCP gateway")
     add_cfg(sp)

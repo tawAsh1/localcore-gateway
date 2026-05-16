@@ -42,15 +42,15 @@ class LambdaInvoker(abc.ABC):
         how AgentCore Gateway delivers ``bedrockAgentCoreToolName``.
         """
 
-    async def aclose(self) -> None:
+    async def aclose(self) -> None:  # noqa: B027  # optional no-op hook
         """Release backend resources (override if needed)."""
 
 
 def make_invoker(spec: Any, *, code_root: str | None = None) -> LambdaInvoker:
     """Construct the configured backend.
 
-    ``spec`` is a :class:`localcore_gateway.config.LambdaFunctionConfig`. ``code_root`` is
-    the resolved import root for the native backend.
+    ``spec`` is a :class:`localcore_gateway.config.LambdaFunctionConfig`.
+    ``code_root`` is the resolved import root for the native backend.
     """
     from localcore_gateway.lambda_emu.native import NativeLambdaInvoker
     from localcore_gateway.lambda_emu.sam import SamLambdaInvoker
