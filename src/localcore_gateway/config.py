@@ -94,10 +94,11 @@ class LambdaTargetConfig(BaseModel):
     tools: list[ToolSpec] = Field(default_factory=list)
     tool_schema_file: str | None = Field(
         default=None,
-        description="Path to a JSON file holding the tool schema list "
-        "(AgentCore toolSchema.inlinePayload shape: a list of "
-        "{name, description, inputSchema}). Merged with inline `tools` "
-        "(inline wins on name clash). Relative to the config file's directory.",
+        description="Path to a JSON file holding the tool schema "
+        "(AgentCore toolSchema.inlinePayload shape): a list of "
+        "{name, description, inputSchema} OR a single such object. Merged "
+        "with inline `tools` (inline wins on name clash). Relative to the "
+        "config file's directory.",
     )
 
     model_config = {"populate_by_name": True}
@@ -222,8 +223,13 @@ class GatewayConfig(BaseModel):
         merged: dict[str, ToolSpec] = {}
         if tc.tool_schema_file:
             raw = json.loads(self._resolve(tc.tool_schema_file).read_text())
-            if not isinstance(raw, list):
-                raise ValueError(f"{tc.tool_schema_file}: expected a JSON list of tool specs")
+            # Accept a list of tool specs OR a single tool spec dict.
+            if isinstance(raw, dict):
+                raw = [raw]
+            elif not isinstance(raw, list):
+                raise ValueError(
+                    f"{tc.tool_schema_file}: expected a JSON list of tool specs or a single tool-spec object"
+                )
             for item in raw:
                 spec = ToolSpec.model_validate(item)
                 merged[spec.name] = spec

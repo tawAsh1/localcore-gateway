@@ -39,7 +39,7 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 | `name` | string | required | tools are exposed as `<name>___<tool>` |
 | `lambda` | object | required | the Lambda behind this target (below) |
 | `tools` | list | `[]` | inline tool specs (below) |
-| `tool_schema_file` | string | – | path to a JSON file of tool specs (AgentCore `toolSchema.inlinePayload` shape). Merged with `tools`; inline wins on name clash. Relative to the config dir |
+| `tool_schema_file` | string | – | path to a JSON file of tool specs (AgentCore `toolSchema.inlinePayload` shape) — a **list** or a **single** tool-spec object. Merged with `tools`; inline wins on name clash. Relative to the config dir |
 
 At least one of `tools` / `tool_schema_file` is required.
 

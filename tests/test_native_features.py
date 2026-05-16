@@ -120,6 +120,23 @@ def test_p4_tool_schema_file_merge(tmp_path):
     assert tools["dup"] == "inline-wins"  # inline overrides file on name clash
 
 
+def test_p4_tool_schema_file_accepts_single_dict(tmp_path):
+    (tmp_path / "h.py").write_text("def handler(e, c): return {}\n")
+    (tmp_path / "one.json").write_text(
+        json.dumps({"name": "solo", "description": "single", "inputSchema": {"type": "object"}})
+    )
+    (tmp_path / "config.yaml").write_text(
+        "targets:\n"
+        "  - type: lambda\n"
+        "    name: t\n"
+        "    lambda: { backend: native, handler: h.handler }\n"
+        "    tool_schema_file: one.json\n"
+    )
+    cfg = load_config(tmp_path / "config.yaml")
+    tools = [t.name for t in cfg.effective_tools(cfg.targets[0])]
+    assert tools == ["solo"]  # single object normalized to a 1-element list
+
+
 def test_p4_requires_tools_or_schema_file():
     with pytest.raises(ValidationError, match=r"tools.*tool_schema_file"):
         GatewayConfig.model_validate(
