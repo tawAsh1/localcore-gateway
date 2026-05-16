@@ -158,8 +158,22 @@ def test_resolved_python(tmp_path):
     cfg = GatewayConfig()
     cfg.source_dir = str(tmp_path)
     path_like = LambdaFunctionConfig(backend="native", handler="h.h", python="./venv/bin/python")
-    assert cfg.resolved_python(path_like) == str((tmp_path / "venv/bin/python").resolve())
+    assert cfg.resolved_python(path_like) == os.path.normpath(str(tmp_path / "venv/bin/python"))
     bare = LambdaFunctionConfig(backend="native", handler="h.h", python="python3.12")
     assert cfg.resolved_python(bare) == "python3.12"  # PATH command, untouched
     none = LambdaFunctionConfig(backend="native", handler="h.h")
     assert cfg.resolved_python(none) is None
+
+
+def test_resolved_python_does_not_follow_symlinks(tmp_path):
+    """venv bin/python is a symlink; resolving it would lose the venv."""
+    cfg = GatewayConfig()
+    cfg.source_dir = str(tmp_path)
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "python").write_text("")
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    sym = LambdaFunctionConfig(backend="native", handler="h.h", python="./link/python")
+    got = cfg.resolved_python(sym)
+    assert got == os.path.normpath(str(tmp_path / "link" / "python"))
+    assert f"{os.sep}link{os.sep}python" in got
+    assert f"{os.sep}real{os.sep}" not in got  # symlink NOT followed

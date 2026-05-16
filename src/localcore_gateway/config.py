@@ -143,11 +143,18 @@ class GatewayConfig(BaseModel):
         p = lc.python
         if not p:
             return None
-        # Treat as a filesystem path only if it looks like one; otherwise it
-        # is a bare command resolved via PATH (e.g. "python3.12").
-        if os.sep in p or p.startswith(("~", ".")):
-            return str(self._resolve(p))
-        return p
+        # A bare command (no separator) is resolved via PATH (e.g.
+        # "python3.12"); pass it through untouched.
+        if not (os.sep in p or p.startswith(("~", "."))):
+            return p
+        # A path: make it absolute (relative to the config dir) but DO NOT
+        # follow symlinks. A venv's bin/python is normally a symlink;
+        # resolving it would point at the underlying interpreter and lose the
+        # venv (its site-packages). Lexical normalize only.
+        e = Path(p).expanduser()
+        base = Path(self.source_dir) if self.source_dir else Path()
+        target = e if e.is_absolute() else base / e
+        return os.path.normpath(str(target))
 
     def effective_tools(self, tc: LambdaTargetConfig) -> list[ToolSpec]:
         """Tools from tool_schema_file (if any) then inline; inline wins."""
