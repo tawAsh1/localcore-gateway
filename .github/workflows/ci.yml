@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege; this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 = the requires-python floor (previously only run on newer);
+        # 3.13 = a current interpreter.
+        python-version: ["3.11", "3.13"]
+    steps:
+      # Third-party actions pinned by commit SHA (supply-chain: a moved tag
+      # cannot silently change what runs). Bump deliberately.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      # --locked fails if uv.lock is stale -> lockfile drift is a CI error.
+      - run: uv sync --locked --python ${{ matrix.python-version }}
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q

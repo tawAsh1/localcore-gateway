@@ -58,8 +58,8 @@ ignore = [
     # --- complexity metrics: judgment calls, not mechanical defects ---
     "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "C901",
     # --- intentional lazy/deferred imports throughout: CLI startup cost,
-    #     optional deps (resource, jwt provider), base<->native/sam circular
-    #     import avoidance. Moving these to top-level would regress. ---
+    #     optional deps (resource), base<->native/sam circular import
+    #     avoidance. Moving these to top-level would regress. ---
     "PLC0415",
     # --- flake8-type-checking: pydantic/FastMCP resolve annotations at
     #     RUNTIME (model field types). Gating those imports behind
@@ -74,8 +74,8 @@ ignore = [
 # examples/ is illustrative Lambda code loaded by path, intentionally NOT a
 # package (no __init__), and may print.
 "examples/**" = ["T201", "INP001"]
-# Tests legitimately use `assert`.
-"tests/**" = ["S101"]
+# Tests legitimately use `assert` and may poke internals.
+"tests/**" = ["S101", "SLF001"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

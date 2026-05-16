@@ -17,7 +17,7 @@ AgentCore-compat layer on top.
 MCP client / agent
    │  MCP Streamable HTTP  (POST /mcp, JSON-RPC)
    ▼
-FastMCP server  ── auth (none | JWT)
+FastMCP server  (no inbound auth — local dev tool)
    │  tools/list  → aggregated catalog: "<target>___<tool>"
    │  tools/call  → GatewayTool.run(arguments)
    ▼
@@ -42,8 +42,8 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | Lambda target: args as event | `LambdaTarget.call_tool` passes `arguments` as the Lambda `event` |
 | `context.client_context.custom['bedrockAgentCoreToolName']` | injected by `LambdaTarget` (plus `bedrockAgentCoreGatewayId`, `bedrockAgentCoreTargetName`) |
 | Lambda return → tool result | `gateway._to_tool_result` (dict → structured content) |
-| Inbound authorizer (OAuth/JWT \| none) | `auth.build_auth` → FastMCP `JWTVerifier` or `None` |
 | `toolSchema.inlinePayload` | each `ToolSpec.input_schema` in config |
+| Inbound authorizer (OAuth/JWT \| IAM) | **not implemented** — no inbound auth (local dev tool) |
 | `x_amz_bedrock_agentcore_search` | **not implemented** (intentionally omitted) |
 
 ## Component map
@@ -52,7 +52,6 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 |---|---|
 | `localcore_gateway.config` | YAML → validated pydantic models (`GatewayConfig`, …) |
 | `localcore_gateway.gateway` | builds the FastMCP server, `GatewayTool`, target aggregation |
-| `localcore_gateway.auth` | inbound authorizer (`none` / `jwt`) |
 | `localcore_gateway.targets.base` | `Target` interface, `ToolDef`, `ToolOutcome` |
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |

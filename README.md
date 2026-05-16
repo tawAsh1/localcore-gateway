@@ -1,5 +1,9 @@
 # localcore-gateway
 
+[![CI](https://github.com/tawAsh1/localcore-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/tawAsh1/localcore-gateway/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python ≥3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)](pyproject.toml)
+
 A local, faithful-enough reimplementation of **AWS Bedrock AgentCore Gateway**,
 with a pluggable **local Lambda backend**. Develop and test agent ↔ gateway ↔
 Lambda integrations entirely on your machine, then point the same MCP client at
@@ -19,7 +23,6 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   **event**; the tool identity is delivered via
   `context.client_context.custom['bedrockAgentCoreToolName']`; the Lambda's
   return value becomes the tool result.
-- **Inbound authorizer** — `none` (dev) or `jwt` (OAuth/JWT).
 
 ## Local Lambda backends
 
@@ -34,7 +37,7 @@ is for the *Runtime*, not the Gateway). This fills that gap.
 - [Configuration reference](docs/configuration.md) — every config field
 - [Writing Lambda handlers](docs/lambda-handlers.md) — the handler contract, multi-tool, errors, logs, native vs sam
 - [CLI reference](docs/cli.md) — `serve` / `dev` / `tools` / `invoke`
-- [Connecting agents](docs/connecting-agents.md) — point an MCP client at it; promote to real AWS; auth
+- [Connecting agents](docs/connecting-agents.md) — point an MCP client at it; promote to real AWS
 
 ## Quick start
 

@@ -21,7 +21,6 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools import Tool, ToolResult
 from pydantic.json_schema import SkipJsonSchema
 
-from localcore_gateway.auth import build_auth
 from localcore_gateway.config import GatewayConfig
 from localcore_gateway.targets.base import Target
 from localcore_gateway.targets.lambda_target import LambdaTarget
@@ -81,7 +80,9 @@ def build_targets(cfg: GatewayConfig) -> list[Target]:
 
 def build_gateway(cfg: GatewayConfig) -> tuple[FastMCP, list[Target]]:
     """Construct the FastMCP server and the live targets behind it."""
-    mcp = FastMCP(name=cfg.server.name, auth=build_auth(cfg.auth))
+    # No inbound auth: this is a local dev tool. Front it externally if you
+    # ever expose it (see SECURITY.md).
+    mcp = FastMCP(name=cfg.server.name)
     targets = build_targets(cfg)
 
     tool_count = 0

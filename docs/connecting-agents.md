@@ -10,8 +10,8 @@ AWS   : https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mc
 ```
 
 Tool names are identical in both (`<target>___<tool>`), so swapping environments
-needs **no code change** in the agent — just the endpoint URL and the auth
-token.
+needs **no code change** in the agent — just the endpoint URL (and, against real
+AWS, the auth token; the local gateway accepts requests without one).
 
 ## FastMCP / Python client
 
@@ -24,8 +24,9 @@ async with Client("http://127.0.0.1:8080/mcp") as c:
     print(res.structured_content)   # {'sum': 42.0}
 ```
 
-With JWT auth enabled, pass a bearer token via the client's auth/headers
-mechanism (e.g. `Authorization: Bearer <token>`).
+The local gateway has no inbound auth, so no token is required. Any
+`Authorization` header an agent sends (for the real AWS endpoint) is simply
+ignored locally — agent code does not need to change between environments.
 
 ## Generic MCP client config
 
@@ -54,14 +55,14 @@ it exists against this local gateway.
 
 ## Authentication
 
-| `auth.mode` | Behaviour | When |
-|---|---|---|
-| `none` | no inbound auth | local dev (default) |
-| `jwt` | bearer JWT verified by FastMCP `JWTVerifier` (`jwks_uri` / `issuer` / `audience` from config) | mirroring AgentCore's OAuth/JWT authorizer |
+The local gateway has **no inbound authentication** — it is a local dev tool.
+Bind it to loopback (the default `127.0.0.1`). If you must expose it (LAN,
+shared box), put it behind your own reverse proxy / auth; do not rely on the
+gateway itself to gate access.
 
-For `jwt`, point `jwks_uri`/`issuer`/`audience` at your local IdP (Cognito
-local, Keycloak, a static JWKS, …) and send `Authorization: Bearer <token>`.
-See [configuration.md](configuration.md#auth-authconfig).
+This does not affect the "no code change" promise: real AgentCore enforces
+OAuth/JWT, the agent sends a bearer token there, and the local gateway simply
+ignores any token — so the same client works against both.
 
 ## Promote to real AWS
 

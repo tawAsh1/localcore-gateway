@@ -11,7 +11,6 @@ Full working example: [`examples/config.yaml`](../examples/config.yaml).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `auth` | object | `{mode: none}` | inbound authorizer |
 | `targets` | list | `[]` | gateway targets (currently `lambda` only) |
 
 ## `server` (`ServerConfig`)
@@ -25,17 +24,8 @@ Full working example: [`examples/config.yaml`](../examples/config.yaml).
 
 The MCP endpoint is `http://{host}:{port}{path}`.
 
-## `auth` (`AuthConfig`)
-
-| Key | Type | Default | Notes |
-|---|---|---|---|
-| `mode` | `none` \| `jwt` | `none` | `none` = no inbound auth (dev default) |
-| `jwks_uri` | string | – | JWKS endpoint (jwt) |
-| `issuer` | string | – | expected `iss` (jwt) |
-| `audience` | string | – | expected `aud` (jwt) |
-
-Validation: `mode: jwt` requires at least `jwks_uri` **or** `issuer`. JWT
-verification is delegated to FastMCP's `JWTVerifier`. See
+There is **no inbound authentication** (this is a local dev tool). Bind to
+loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
 ## A target (`LambdaTargetConfig`)

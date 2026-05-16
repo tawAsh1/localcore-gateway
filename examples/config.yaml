@@ -4,13 +4,7 @@ server:
   port: 8080
   path: /mcp
 
-# Inbound authorizer. AgentCore: none | jwt(OAuth). Local default: none.
-auth:
-  mode: none
-  # mode: jwt
-  # jwks_uri: https://example.com/.well-known/jwks.json
-  # issuer: https://example.com
-  # audience: localcore-gateway
+# No inbound auth (local dev tool). Front it externally if you expose it.
 
 targets:
   - type: lambda

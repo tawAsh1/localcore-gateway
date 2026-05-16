@@ -75,21 +75,6 @@ class LambdaTargetConfig(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class AuthConfig(BaseModel):
-    """Inbound authorizer (AgentCore: OAuth(JWT) | none)."""
-
-    mode: Literal["none", "jwt"] = "none"
-    jwks_uri: str | None = None
-    issuer: str | None = None
-    audience: str | None = None
-
-    @model_validator(mode="after")
-    def _check(self) -> AuthConfig:
-        if self.mode == "jwt" and not (self.jwks_uri or self.issuer):
-            raise ValueError("auth.jwt requires at least jwks_uri or issuer")
-        return self
-
-
 class ServerConfig(BaseModel):
     name: str = "localcore-gateway"
     host: str = "127.0.0.1"
@@ -99,7 +84,6 @@ class ServerConfig(BaseModel):
 
 class GatewayConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
-    auth: AuthConfig = Field(default_factory=AuthConfig)
     targets: list[LambdaTargetConfig] = Field(default_factory=list)
 
     # Set by the loader; the directory of the config file.
