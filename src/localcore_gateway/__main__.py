@@ -91,6 +91,8 @@ def _cmd_tools(args: argparse.Namespace) -> int:
             "name": f"{t.name}{NAME_SEP}{td.name}",
             "description": td.description,
             "inputSchema": td.input_schema,
+            # Only when declared (optional, mirrors MCP / AgentCore).
+            **({"outputSchema": td.output_schema} if td.output_schema is not None else {}),
         }
         for t in targets
         for td in t.list_tools()
