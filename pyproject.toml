@@ -1,0 +1,45 @@
+[project]
+name = "localcore-gateway"
+version = "0.1.0"
+description = "Local, faithful-enough reimplementation of AWS Bedrock AgentCore Gateway, with a pluggable local Lambda backend."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11"
+dependencies = [
+    # MCP server + gateway aggregation surface (do NOT hand-roll JSON-RPC).
+    # Pinned: FastMCP 3.x API moves fast.
+    "fastmcp>=3.2,<3.3",
+    "uvicorn[standard]>=0.30",
+    "pyyaml>=6.0",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+lcgw = "localcore_gateway.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/localcore_gateway"]
+
+[tool.uv]
+# Supply-chain: ignore releases newer than this date when resolving, so a
+# freshly-published (possibly compromised) version gets a quarantine window.
+# Fixed date (uv does not roll automatically); bump it forward periodically.
+# Set ~7 days back from 2026-05-16.
+exclude-newer = "2026-05-09T00:00:00Z"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]

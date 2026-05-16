@@ -1,0 +1,16 @@
+localcore-gateway
+Copyright (c) 2026 the localcore-gateway authors
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this project except in compliance with the License. A copy of the License
+is in the LICENSE file, or at http://www.apache.org/licenses/LICENSE-2.0
+
+This is an unofficial, community project. It is NOT affiliated with, endorsed
+by, or sponsored by Amazon Web Services, Inc. or its affiliates.
+
+"AWS", "Amazon Web Services", "Amazon Bedrock", "Amazon Bedrock AgentCore",
+and "AWS Lambda" are trademarks of Amazon.com, Inc. or its affiliates. These
+names are used in this project only nominatively, to accurately describe the
+AWS service that this software interoperates with and reimplements for local
+development. No AWS trademark, logo, or trade dress is used as the name,
+branding, or domain of this project.

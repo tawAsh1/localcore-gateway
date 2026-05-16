@@ -1,0 +1,53 @@
+server:
+  name: localcore-gateway
+  host: 127.0.0.1
+  port: 8080
+  path: /mcp
+
+# Inbound authorizer. AgentCore: none | jwt(OAuth). Local default: none.
+auth:
+  mode: none
+  # mode: jwt
+  # jwks_uri: https://example.com/.well-known/jwks.json
+  # issuer: https://example.com
+  # audience: localcore-gateway
+
+targets:
+  - type: lambda
+    name: demo
+    lambda:
+      backend: native            # native (no Docker) | sam (sam local)
+      handler: handlers.handler  # code_root defaults to this file's dir
+      function_name: demo-fn
+      memory_mb: 128
+      timeout_sec: 10
+      # backend: sam
+      # sam_endpoint: http://127.0.0.1:3001
+      # sam_function: DemoFunction
+    tools:
+      - name: echo
+        description: Echo back the provided message.
+        inputSchema:
+          type: object
+          properties:
+            message: { type: string }
+          required: [message]
+      - name: add
+        description: Add two numbers and return the sum.
+        inputSchema:
+          type: object
+          properties:
+            a: { type: number }
+            b: { type: number }
+          required: [a, b]
+      - name: weather
+        description: Get a (fake) weather forecast for a city.
+        inputSchema:
+          type: object
+          properties:
+            city: { type: string }
+      - name: boom
+        description: Always fails (demonstrates the Lambda error envelope).
+        inputSchema:
+          type: object
+          properties: {}
