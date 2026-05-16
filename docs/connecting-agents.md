@@ -28,6 +28,35 @@ The local gateway has no inbound auth, so no token is required. Any
 `Authorization` header an agent sends (for the real AWS endpoint) is simply
 ignored locally — agent code does not need to change between environments.
 
+## Use with Strands Agents
+
+[Strands Agents](https://strandsagents.com) talks to a real AgentCore Gateway
+over MCP Streamable HTTP — the exact surface this project exposes. So a Strands
+agent points at the local gateway by changing only the URL (and dropping the
+auth token, since the local gateway is unauthenticated):
+
+```python
+from strands import Agent
+from strands.models import BedrockModel
+from strands.tools.mcp import MCPClient
+from mcp.client.streamable_http import streamablehttp_client
+
+mcp_client = MCPClient(lambda: streamablehttp_client("http://127.0.0.1:8080/mcp"))
+with mcp_client:                          # start once; keep open while the agent runs
+    tools = mcp_client.list_tools_sync()  # demo___add, demo___weather, ...
+    agent = Agent(model=BedrockModel(), tools=tools)
+    agent("What's the weather in Osaka? add 19 and 23")
+```
+
+Runnable example: [`examples/strands_agent.py`](../examples/strands_agent.py).
+
+`strands-agents` is **not** a dependency of localcore-gateway and is
+deliberately kept out of its lockfile — install it in the environment where
+the agent runs (`uv pip install "strands-agents"`). The gateway and the agent
+are separate processes; they only share the MCP URL. To promote to real AWS,
+set the gateway URL and pass `headers={"Authorization": f"Bearer {token}"}`
+(refresh before expiry); the agent code is otherwise identical.
+
 ## Generic MCP client config
 
 Most MCP clients accept a Streamable HTTP server entry:
