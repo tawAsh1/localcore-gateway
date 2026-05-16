@@ -1,6 +1,6 @@
 [project]
 name = "localcore-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local, faithful-enough reimplementation of AWS Bedrock AgentCore Gateway, with a pluggable local Lambda backend."
 readme = "README.md"
 license = "Apache-2.0"
