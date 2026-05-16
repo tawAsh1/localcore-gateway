@@ -1,5 +1,6 @@
 # localcore-gateway
 
+[![PyPI](https://img.shields.io/pypi/v/localcore-gateway.svg)](https://pypi.org/project/localcore-gateway/)
 [![CI](https://github.com/tawAsh1/localcore-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/tawAsh1/localcore-gateway/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python ≥3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)](pyproject.toml)
@@ -42,17 +43,55 @@ is for the *Runtime*, not the Gateway). This fills that gap.
 - [CLI reference](docs/cli.md) — `serve` / `dev` / `tools` / `invoke`
 - [Connecting agents](docs/connecting-agents.md) — point an MCP client at it; promote to real AWS
 
-## Quick start
+## Install
 
 ```bash
-uv sync
-uv run lcgw tools  -c examples/config.yaml          # show the tool catalog
-uv run lcgw invoke -c examples/config.yaml demo___add --data '{"a":2,"b":40}'
-uv run lcgw serve  -c examples/config.yaml           # MCP at http://127.0.0.1:8080/mcp
-uv run lcgw dev    -c examples/config.yaml           # same, with hot reload
+uv tool install localcore-gateway      # or: pipx install localcore-gateway
+uvx --from localcore-gateway lcgw --help   # one-off, no install
 ```
 
-Point any MCP client at `http://127.0.0.1:8080/mcp`.
+## Quick start
+
+A handler and a config (nothing else needed):
+
+```python
+# handlers.py
+def handler(event, context):
+    return {"sum": event["a"] + event["b"]}
+```
+
+```yaml
+# gateway.yaml
+targets:
+  - type: lambda
+    name: demo
+    lambda: { backend: native, handler: handlers.handler }
+    tools:
+      - name: add
+        inputSchema:
+          type: object
+          properties: { a: { type: number }, b: { type: number } }
+          required: [a, b]
+```
+
+```bash
+lcgw tools  -c gateway.yaml
+lcgw invoke -c gateway.yaml demo___add --data '{"a":2,"b":40}'
+lcgw serve  -c gateway.yaml            # MCP at http://127.0.0.1:8080/mcp
+lcgw dev    -c gateway.yaml            # same, with hot reload
+```
+
+Point any MCP client at `http://127.0.0.1:8080/mcp`. Richer examples (multi
+target, `math_handlers.py`, Strands agent) are in [`examples/`](examples/).
+
+### From source (development)
+
+```bash
+git clone https://github.com/tawAsh1/localcore-gateway && cd localcore-gateway
+uv sync
+uv run pytest
+uv run lcgw serve -c examples/config.yaml
+```
 
 ### Using the `sam` backend
 
@@ -71,12 +110,6 @@ See [`examples/config.yaml`](examples/config.yaml). A target declares a Lambda
 (`backend`, `handler`/`sam_function`, `memory_mb`, `timeout_sec`, `env`) and the
 tools it backs (each with an explicit JSON Schema). One Lambda can back many
 tools; the handler branches on `bedrockAgentCoreToolName`.
-
-## Tests
-
-```bash
-uv run pytest
-```
 
 ## Known limitations
 
