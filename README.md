@@ -5,6 +5,8 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python ≥3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)](pyproject.toml)
 
+English | [日本語](README.ja.md)
+
 A local, faithful-enough reimplementation of **AWS Bedrock AgentCore Gateway**,
 with a pluggable **local Lambda backend**. Develop and test agent ↔ gateway ↔
 Lambda integrations entirely on your machine, then point the same MCP client at
