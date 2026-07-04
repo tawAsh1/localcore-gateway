@@ -77,6 +77,10 @@ def build_targets(cfg: GatewayConfig) -> list[Target]:
             from localcore_gateway.targets.openapi_target import OpenAPITarget
 
             targets.append(OpenAPITarget(tc, cfg))
+        elif tc.type == "mcp":
+            from localcore_gateway.targets.mcp_target import MCPTarget
+
+            targets.append(MCPTarget(tc, cfg))
         else:  # pragma: no cover - config validation prevents this
             raise ValueError(f"unsupported target type: {tc.type!r}")
     return targets

@@ -55,6 +55,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `localcore_gateway.targets.base` | `Target` interface, `ToolDef`, `ToolOutcome` |
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
 | `localcore_gateway.targets.openapi_target` | OpenAPI → MCP (FastMCP engine, verbatim `operationId` naming, outbound auth) |
+| `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server (streamable HTTP, or local stdio as a convenience), verbatim tool names |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
@@ -85,7 +86,14 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
   the Invoke API), so that backend reports only an invoke summary.
 - AgentCore's builtin semantic tool search
   (`x_amz_bedrock_agentcore_search`) is intentionally not implemented.
-- Lambda and OpenAPI target types are implemented; MCP-passthrough and
-  Smithy are not. OpenAPI reuses FastMCP's spec→HTTP engine but overrides
-  naming to the verbatim `operationId` for AgentCore fidelity; outbound auth
-  is static API key (header/query) or bearer only (no OAuth 2LO).
+- Lambda, OpenAPI, and MCP-passthrough target types are implemented; Smithy
+  is not. OpenAPI reuses FastMCP's spec→HTTP engine but overrides naming to
+  the verbatim `operationId` for AgentCore fidelity; outbound auth is static
+  API key (header/query) or bearer only (no OAuth 2LO).
+- MCP-passthrough keeps one persistent upstream `Client` session (opened
+  lazily on first call); a call that hits a dead session (upstream
+  restart/dropped connection) fails as a tool error, then the session is
+  re-opened on a later call. Outbound auth (streamable HTTP mode) reuses the
+  OpenAPI targets' engine — static headers, bearer, or an API key in a
+  header/query param. The stdio `command` mode is a local-only convenience
+  with no AgentCore analog.

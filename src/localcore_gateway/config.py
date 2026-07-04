@@ -162,8 +162,84 @@ class OpenAPITargetConfig(BaseModel):
         return self
 
 
+class MCPTargetConfig(BaseModel):
+    """An MCP-passthrough gateway target: another MCP server's tools, proxied.
+
+    Faithful to AgentCore where it matters (remote tool names are used
+    **verbatim**; the gateway adds the `<target>___` prefix uniformly, same
+    as the other target types) but the transport split is a local-only
+    convenience: the real gateway only ever speaks streamable HTTP to the
+    upstream MCP server (``url``); the ``command`` (stdio) mode here has no
+    AWS analog -- it exists so you can point the gateway at a local MCP
+    server (e.g. one you're developing) without standing up an HTTP listener
+    for it first.
+    """
+
+    type: Literal["mcp"] = "mcp"
+    name: str = Field(description="Target name; tools are exposed as '<name>___<tool>'.")
+
+    # --- remote, streamable HTTP (the AgentCore-faithful mode) ---
+    url: str | None = Field(default=None, description="Upstream MCP server endpoint (streamable HTTP).")
+    headers: dict[str, str] = Field(
+        default_factory=dict, description="Static headers sent with every request (http only)."
+    )
+    auth: OpenAPIAuthConfig = Field(
+        default_factory=OpenAPIAuthConfig,
+        description="Outbound auth to the upstream server (http only). Same shape and behavior as "
+        "OpenAPI targets: bearer, or a static API key in a header or query param.",
+    )
+
+    # --- local, stdio (convenience only; no AWS analog) ---
+    command: str | None = Field(
+        default=None,
+        description="Command to spawn a local MCP server over stdio: a path (relative to the config dir) "
+        "or a PATH command. The subprocess does NOT inherit the gateway's full environment -- the MCP SDK "
+        "spawns it with a safe default subset (HOME, PATH, SHELL, TERM, USER, LOGNAME on POSIX) plus "
+        "`env_file` / `env` below.",
+    )
+    args: list[str] = Field(
+        default_factory=list,
+        description="Arguments passed to `command` (stdio only). Opaque to the gateway: script paths in "
+        "here are resolved by the child, relative to its `cwd`.",
+    )
+    env: dict[str, str] = Field(
+        default_factory=dict, description="Extra environment variables for the subprocess (stdio only)."
+    )
+    env_file: str | None = Field(
+        default=None,
+        description="Path to a .env-style file (KEY=VALUE per line) merged into the subprocess env; "
+        "`env` overrides it (stdio only). Relative to the config file's directory.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Working directory for the subprocess (stdio only). Relative to the config file's "
+        "directory; defaults to it.",
+    )
+
+    timeout_sec: float = 30.0
+    tools: list[str] = Field(default_factory=list, description="Optional allowlist of upstream tool names to expose.")
+
+    @model_validator(mode="after")
+    def _check_transport(self) -> MCPTargetConfig:
+        if bool(self.url) == bool(self.command):
+            raise ValueError("exactly one of `url` / `command` is required")
+        if self.command:
+            if self.headers:
+                raise ValueError("mcp target: `headers` requires `url` (stdio `command` mode has no HTTP headers)")
+            if self.auth.type != "none":
+                raise ValueError("mcp target: `auth` requires `url` (stdio `command` mode has no HTTP auth)")
+        else:
+            if self.env:
+                raise ValueError("mcp target: `env` requires `command` (stdio-only; not applicable to `url`)")
+            if self.env_file:
+                raise ValueError("mcp target: `env_file` requires `command` (stdio-only; not applicable to `url`)")
+            if self.cwd:
+                raise ValueError("mcp target: `cwd` requires `command` (stdio-only; not applicable to `url`)")
+        return self
+
+
 # Discriminated by `type`.
-TargetConfig = Annotated[LambdaTargetConfig | OpenAPITargetConfig, Field(discriminator="type")]
+TargetConfig = Annotated[LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig, Field(discriminator="type")]
 
 
 class ServerConfig(BaseModel):
@@ -201,10 +277,7 @@ class GatewayConfig(BaseModel):
     def resolved_env_file(self, lc: LambdaFunctionConfig) -> str | None:
         return str(self._resolve(lc.env_file)) if lc.env_file else None
 
-    def resolved_python(self, lc: LambdaFunctionConfig) -> str | None:
-        p = lc.python
-        if not p:
-            return None
+    def _resolve_command(self, p: str) -> str:
         # A bare command (no separator) is resolved via PATH (e.g.
         # "python3.12"); pass it through untouched.
         if not (os.sep in p or p.startswith(("~", "."))):
@@ -217,6 +290,32 @@ class GatewayConfig(BaseModel):
         base = Path(self.source_dir) if self.source_dir else Path()
         target = e if e.is_absolute() else base / e
         return os.path.normpath(str(target))
+
+    def resolved_python(self, lc: LambdaFunctionConfig) -> str | None:
+        return self._resolve_command(lc.python) if lc.python else None
+
+    def resolved_command(self, tc: MCPTargetConfig) -> str:
+        """`command` for a stdio target: PATH command or config-dir-relative path (same rule as resolved_python)."""
+        return self._resolve_command(tc.command or "")
+
+    def resolved_cwd(self, tc: MCPTargetConfig) -> str | None:
+        """The stdio subprocess cwd; defaults to the config file's directory."""
+        if tc.cwd:
+            return str(self._resolve(tc.cwd))
+        return self.source_dir
+
+    def mcp_env(self, tc: MCPTargetConfig) -> dict[str, str] | None:
+        """env_file (if any) merged under inline `env`; None if neither.
+
+        Passed to the MCP SDK's stdio spawn, which layers it over its safe
+        default env subset (HOME, PATH, SHELL, TERM, USER, LOGNAME on POSIX)
+        -- the subprocess does NOT inherit the gateway's full environment.
+        """
+        merged: dict[str, str] = {}
+        if tc.env_file:
+            merged.update(_parse_env_file(str(self._resolve(tc.env_file))))
+        merged.update(tc.env)
+        return merged or None
 
     def effective_tools(self, tc: LambdaTargetConfig) -> list[ToolSpec]:
         """Tools from tool_schema_file (if any) then inline; inline wins."""
@@ -261,6 +360,27 @@ class GatewayConfig(BaseModel):
         for k, v in (servers[0].get("variables") or {}).items():
             url = url.replace(f"{{{k}}}", str(v.get("default", "")))
         return url
+
+
+def _parse_env_file(path: str) -> dict[str, str]:
+    """Minimal .env parser: KEY=VALUE per line; #-comments; optional quotes.
+
+    Shared by the native Lambda backend (`lambda.env_file`) and MCP stdio
+    targets (`env_file`).
+    """
+    out: dict[str, str] = {}
+    for raw in Path(path).read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        line = line.removeprefix("export ").lstrip()
+        key, _, val = line.partition("=")
+        key, val = key.strip(), val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        if key:
+            out[key] = val
+    return out
 
 
 def load_config(path: str | Path) -> GatewayConfig:

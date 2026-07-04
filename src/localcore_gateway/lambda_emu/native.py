@@ -28,7 +28,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from localcore_gateway.config import LambdaFunctionConfig
+from localcore_gateway.config import LambdaFunctionConfig, _parse_env_file
 from localcore_gateway.lambda_emu._worker import _recv, _send
 from localcore_gateway.lambda_emu.base import InvokeResult, LambdaInvoker
 
@@ -62,23 +62,6 @@ def _scan_mtime(roots: list[str]) -> float:
             with suppress(OSError):
                 latest = max(latest, py.stat().st_mtime)
     return latest
-
-
-def _parse_env_file(path: str) -> dict[str, str]:
-    """Minimal .env parser: KEY=VALUE per line; #-comments; optional quotes."""
-    out: dict[str, str] = {}
-    for raw in Path(path).read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        line = line.removeprefix("export ").lstrip()
-        key, _, val = line.partition("=")
-        key, val = key.strip(), val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
-            val = val[1:-1]
-        if key:
-            out[key] = val
-    return out
 
 
 def _child_env(cfg: LambdaFunctionConfig, env_file: str | None) -> dict[str, str]:

@@ -65,7 +65,8 @@ def _cmd_dev(args: argparse.Namespace) -> int:
 
     reload_dirs = {str(Path(args.config).resolve().parent)}
     for tc in cfg.targets:
-        reload_dirs.update(cfg.resolved_code_roots(tc.lambda_))
+        if tc.type == "lambda":  # only Lambda targets have local code roots to watch
+            reload_dirs.update(cfg.resolved_code_roots(tc.lambda_))
 
     os.environ["LCGW_CONFIG"] = str(Path(args.config).resolve())
     url = f"http://{cfg.server.host}:{cfg.server.port}{cfg.server.path}"

@@ -1,0 +1,31 @@
+server:
+  name: localcore-gateway
+  host: 127.0.0.1
+  port: 8081
+  path: /mcp
+
+# No inbound auth (local dev tool). Front it externally if you expose it.
+
+targets:
+  # Local, stdio (convenience only; no AWS analog): spawns
+  # mcp_upstream_server.py as a subprocess and speaks MCP over its stdin/out.
+  # `command` must be an interpreter with `fastmcp` installed (e.g. this
+  # project's own .venv/bin/python, or wherever you installed it) -- change
+  # it if `python3` on your PATH isn't that interpreter. A path-like command
+  # (like ./.venv/bin/python) resolves against this file's dir; a bare one is
+  # a PATH lookup. The script in `args` is run by the child in its `cwd`,
+  # which defaults to this file's dir. The subprocess gets only a minimal
+  # default env (HOME, PATH, ...), NOT the gateway's full env -- pass more
+  # via `env` / `env_file` if the server needs it.
+  - type: mcp
+    name: local
+    command: python3
+    args: [mcp_upstream_server.py]
+
+  # Remote, streamable HTTP (the AgentCore-faithful mode). Start the same
+  # server over HTTP first:
+  #   fastmcp run examples/mcp_upstream_server.py --transport http --port 9000
+  # - type: mcp
+  #   name: remote
+  #   url: http://127.0.0.1:9000/mcp
+  #   auth: { type: bearer, value: "${TOKEN}" }   # expanded from the environment
