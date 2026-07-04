@@ -1,4 +1,4 @@
-"""``lcgw`` CLI: serve / dev / tools / invoke."""
+"""``lcgw`` CLI: serve / dev / tools / invoke / sync / tail."""
 
 from __future__ import annotations
 
@@ -8,9 +8,10 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
-from localcore_gateway.config import load_config
+from localcore_gateway.config import GatewayConfig, load_config
 from localcore_gateway.gateway import NAME_SEP, build_targets
 
 
@@ -138,6 +139,95 @@ def _cmd_invoke(args: argparse.Namespace) -> int:
     return asyncio.run(_run())
 
 
+def _admin_url(cfg: GatewayConfig, route: str) -> str:
+    """Admin routes live at the server root, outside the MCP path."""
+    return f"http://{cfg.server.host}:{cfg.server.port}{route}"
+
+
+def _format_sync_result(name: str, res: object) -> tuple[str, bool]:
+    """One summary block for a target's sync result; (text, is_error)."""
+    if res == "static" or not isinstance(res, dict):
+        return f"{name}: static (nothing to sync)", False
+    if "error" in res:
+        return f"{name}: ERROR {res['error']}", True
+    line = f"{name}: +{len(res['added'])} added, -{len(res['removed'])} removed, ~{len(res['updated'])} updated"
+    for mark, key in (("+", "added"), ("-", "removed"), ("~", "updated")):
+        for tool in res[key]:
+            line += f"\n  {mark} {name}{NAME_SEP}{tool}"
+    return line, False
+
+
+def _cmd_sync(args: argparse.Namespace) -> int:
+    import httpx
+
+    cfg = load_config(args.config)
+    body = {"target": args.target} if args.target else {}
+    try:
+        resp = httpx.post(_admin_url(cfg, "/-/sync"), json=body, timeout=60.0)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"sync failed: {exc} (is `lcgw serve` running?)", file=sys.stderr)
+        return 1
+    failed = False
+    for name, res in resp.json()["targets"].items():
+        line, is_error = _format_sync_result(name, res)
+        print(line)
+        failed = failed or is_error
+    return 1 if failed else 0
+
+
+def _ellipsize(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _format_invocation(rec: dict) -> str:
+    """One tail line: time, status, tool, duration, compact args/result."""
+    t = rec["time"][11:19]  # HH:MM:SS from the ISO timestamp
+    status = "ERROR" if rec["is_error"] else "OK"
+    return (
+        f"{t} {status:<5} {rec['tool']} ({rec['duration_ms']:.0f} ms) "
+        f"args={_ellipsize(rec['arguments'], 60)} -> {_ellipsize(rec['payload'], 80)}"
+    )
+
+
+def _cmd_tail(args: argparse.Namespace) -> int:
+    import httpx
+
+    cfg = load_config(args.config)
+    url = _admin_url(cfg, "/-/invocations")
+
+    def fetch(since: int, limit: int | None = None) -> dict:
+        params: dict[str, int] = {"since": since}
+        if limit is not None:
+            params["limit"] = limit
+        resp = httpx.get(url, params=params, timeout=10.0)
+        resp.raise_for_status()
+        return resp.json()
+
+    def emit(rec: dict) -> None:
+        print(json.dumps(rec, ensure_ascii=False) if args.json else _format_invocation(rec), flush=True)
+
+    try:
+        if args.lines:
+            data = fetch(0)  # whole backlog, show the last N
+            for rec in data["invocations"][-args.lines :]:
+                emit(rec)
+        else:
+            data = fetch(0, limit=0)  # cursor-only bootstrap: tail from "now"
+        since = data["next"]
+        while True:
+            time.sleep(0.5)
+            data = fetch(since)
+            for rec in data["invocations"]:
+                emit(rec)
+            since = data["next"]
+    except KeyboardInterrupt:
+        return 0
+    except httpx.HTTPError as exc:
+        print(f"tail failed: {exc} (is `lcgw serve` running?)", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     _setup_logging()
     p = argparse.ArgumentParser(
@@ -170,6 +260,17 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("selector", help="target___tool (or target/tool)")
     sp.add_argument("--data", help="JSON tool arguments", default="")
     sp.set_defaults(func=_cmd_invoke)
+
+    sp = sub.add_parser("sync", help="re-sync targets on a running gateway (MCP targets re-discover)")
+    add_cfg(sp)
+    sp.add_argument("--target", help="sync only this target")
+    sp.set_defaults(func=_cmd_sync)
+
+    sp = sub.add_parser("tail", help="stream invocations from a running gateway")
+    add_cfg(sp)
+    sp.add_argument("-n", "--lines", type=int, default=0, help="show the last N invocations first")
+    sp.add_argument("--json", action="store_true", help="emit raw JSONL instead of formatted lines")
+    sp.set_defaults(func=_cmd_tail)
 
     args = p.parse_args(argv)
     return args.func(args)

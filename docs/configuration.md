@@ -25,14 +25,19 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 
 ## `server` (`ServerConfig`)
 
-| Key | Type | Default |
-|---|---|---|
-| `name` | string | `localcore-gateway` |
-| `host` | string | `127.0.0.1` |
-| `port` | int | `8080` |
-| `path` | string | `/mcp` |
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | `localcore-gateway` | |
+| `host` | string | `127.0.0.1` | |
+| `port` | int | `8080` | |
+| `path` | string | `/mcp` | |
+| `history` | int | `1000` | invocation-history ring buffer size (backs `lcgw tail` / `GET /-/invocations`) |
 
-The MCP endpoint is `http://{host}:{port}{path}`.
+The MCP endpoint is `http://{host}:{port}{path}`. The server also exposes a
+small local **admin surface** outside the MCP path — `POST /-/sync` (target
+re-sync) and `GET /-/invocations` (invocation history) — used by `lcgw sync`
+/ `lcgw tail` (see [cli.md](cli.md)). It is local-only and unauthenticated by
+design, and has no AWS analog (AgentCore's control plane is a separate API).
 
 There is **no inbound authentication** (this is a local dev tool). Bind to
 loopback only; front it with your own proxy/auth if you must expose it. See
@@ -165,11 +170,13 @@ targets:
   call). If it dies (upstream restart, dropped connection), the call that
   hits the dead session fails — surfaced as a tool error — and the session is
   re-opened on a later call once the client has noticed the death.
-- Tool discovery happens once, at construction, connecting and disconnecting
+- Tool discovery happens at construction, connecting and disconnecting
   separately from the persistent invocation session; for `command` (stdio)
   mode this means the subprocess is spawned twice (once at startup for
   discovery, once lazily on first call for invocation). Upstream tool-list
-  changes after startup are not picked up — restart the gateway.
+  changes after startup are not picked up automatically — run `lcgw sync`
+  (the SynchronizeGatewayTargets analog; see [cli.md](cli.md)) to
+  re-discover without a restart.
 
 ## `lambda` (`LambdaFunctionConfig`)
 

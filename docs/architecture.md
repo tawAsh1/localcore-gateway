@@ -45,6 +45,12 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `toolSchema.inlinePayload` | each `ToolSpec.input_schema` in config |
 | Inbound authorizer (OAuth/JWT \| IAM) | **not implemented** — no inbound auth (local dev tool) |
 | `x_amz_bedrock_agentcore_search` | **not implemented** (intentionally omitted) |
+| `SynchronizeGatewayTargets` (`PUT /gateways/{id}/synchronize`, 202 + async) | `POST /-/sync` / `lcgw sync` — **synchronous**, returns the per-target diff directly |
+
+The admin surface (`POST /-/sync`, `GET /-/invocations` — invocation history
+for `lcgw tail`) lives outside the MCP path on the same app. It is local-only
+and unauthenticated by design (see SECURITY.md); AgentCore's control plane is
+a separate API, so it has no wire-level analog.
 
 ## Component map
 
@@ -60,7 +66,8 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
 | `localcore_gateway.lambda_emu.sam` | drives `sam local start-lambda` |
-| `localcore_gateway.app` | ASGI app assembly + uvicorn `--factory` entrypoint |
+| `localcore_gateway.history` | in-memory invocation ring buffer (`lcgw tail` backend) |
+| `localcore_gateway.app` | ASGI app assembly (MCP endpoint + `/-/sync`, `/-/invocations` admin routes) + uvicorn `--factory` entrypoint |
 | `localcore_gateway.__main__` | `lcgw` CLI |
 
 ## Design decisions
@@ -93,7 +100,11 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 - MCP-passthrough keeps one persistent upstream `Client` session (opened
   lazily on first call); a call that hits a dead session (upstream
   restart/dropped connection) fails as a tool error, then the session is
-  re-opened on a later call. Outbound auth (streamable HTTP mode) reuses the
-  OpenAPI targets' engine — static headers, bearer, or an API key in a
+  re-opened on a later call. Upstream tool-list changes are picked up via
+  `lcgw sync`, not automatically. Outbound auth (streamable HTTP mode) reuses
+  the OpenAPI targets' engine — static headers, bearer, or an API key in a
   header/query param. The stdio `command` mode is a local-only convenience
   with no AgentCore analog.
+- Invocation history (`lcgw tail`) is an in-memory ring buffer
+  (`server.history` entries, 4 KB per args/payload preview) — no
+  persistence, gone on restart.

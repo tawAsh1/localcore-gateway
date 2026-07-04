@@ -43,5 +43,15 @@ class Target(abc.ABC):
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolOutcome:
         """Invoke ``tool_name`` (the un-prefixed name) with ``arguments``."""
 
+    async def resync(self) -> list[ToolDef] | None:
+        """Re-discover tools from the backend; the fresh list, or None.
+
+        None means "static target, nothing to do" (Lambda/OpenAPI: their tool
+        sets come from config/spec, re-read only on gateway restart). MCP
+        targets override this to re-query the upstream server (the local
+        SynchronizeGatewayTargets analog -- see ``gateway.sync_targets``).
+        """
+        return None
+
     async def aclose(self) -> None:  # noqa: B027  # optional no-op hook
         """Release target resources (override if needed)."""

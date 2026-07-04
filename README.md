@@ -37,6 +37,10 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   verbatim (remote tool names, unprefixed). Streamable HTTP is the
   AgentCore-faithful mode; a local stdio `command` mode is also available as
   a local-only convenience (no AWS analog).
+- **Target re-sync** — `lcgw sync` is the `SynchronizeGatewayTargets` analog:
+  MCP targets re-discover their upstream tools on a running gateway, no
+  restart (synchronous, unlike AWS's async 202-style API). Plus a dev-loop
+  extra with no AWS analog: `lcgw tail` streams every tool invocation live.
 
 ```yaml
 targets:
@@ -97,6 +101,8 @@ lcgw tools  -c gateway.yaml
 lcgw invoke -c gateway.yaml demo___add --data '{"a":2,"b":40}'
 lcgw serve  -c gateway.yaml            # MCP at http://127.0.0.1:8080/mcp
 lcgw dev    -c gateway.yaml            # same, with hot reload
+lcgw tail   -c gateway.yaml            # live per-invocation stream (running gateway)
+lcgw sync   -c gateway.yaml            # re-sync MCP targets (running gateway)
 ```
 
 Point any MCP client at `http://127.0.0.1:8080/mcp`. Richer examples (multi

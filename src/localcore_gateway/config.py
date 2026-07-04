@@ -279,6 +279,10 @@ class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
     path: str = "/mcp"
+    history: int = Field(
+        default=1000,
+        description="Invocation-history ring buffer size (backs `lcgw tail` / GET /-/invocations).",
+    )
 
 
 class GatewayConfig(BaseModel):
