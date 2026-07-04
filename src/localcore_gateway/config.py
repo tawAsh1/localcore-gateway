@@ -4,11 +4,43 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+
+# `${NAME}` (expanded from the environment) or `$${NAME}` (escape: literal
+# `${NAME}`). Bare `$NAME` and any other `$` are left untouched.
+_ENV_REF = re.compile(r"\$(\$\{[A-Za-z_][A-Za-z0-9_]*\})|\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _expand_env_str(s: str) -> str:
+    def repl(m: re.Match[str]) -> str:
+        escaped = m.group(1)
+        if escaped:
+            return escaped
+        name = m.group(2)
+        value = os.environ.get(name)
+        if value is None:
+            raise ValueError(
+                f"config references environment variable ${{{name}}}, which is not set (use $${{{name}}} for a literal)"
+            )
+        return value
+
+    return _ENV_REF.sub(repl, s)
+
+
+def _expand_env(node: Any) -> Any:
+    """Expand ${VAR} in every string scalar of a parsed-YAML tree."""
+    if isinstance(node, str):
+        return _expand_env_str(node)
+    if isinstance(node, list):
+        return [_expand_env(v) for v in node]
+    if isinstance(node, dict):
+        return {k: _expand_env(v) for k, v in node.items()}
+    return node
 
 
 class LambdaFunctionConfig(BaseModel):
@@ -384,8 +416,16 @@ def _parse_env_file(path: str) -> dict[str, str]:
 
 
 def load_config(path: str | Path) -> GatewayConfig:
+    """Load and validate a gateway config file.
+
+    ``${VAR}`` in any string value is expanded from the environment (the
+    AgentCore analog of credential providers: secrets stay out of the config
+    file). An unset variable is a config error; ``$${VAR}`` escapes to a
+    literal ``${VAR}``. Expansion applies to the config file only -- not to
+    files it references (``spec_file``, ``tool_schema_file``, ``env_file``).
+    """
     p = Path(path).expanduser().resolve()
     raw = yaml.safe_load(p.read_text()) or {}
-    cfg = GatewayConfig.model_validate(raw)
+    cfg = GatewayConfig.model_validate(_expand_env(raw))
     cfg.source_dir = str(p.parent)
     return cfg
