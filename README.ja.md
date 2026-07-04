@@ -34,6 +34,10 @@ AgentCore Gateway には公式のローカルエミュレータがありませ�
 - **MCP パススルーターゲット** — 別の MCP サーバーのツールをそのままプロキシします
   (リモートのツール名を無加工で使用)。Streamable HTTP が AgentCore に忠実なモードで、
   ローカル専用の便宜機能として stdio の `command` モードもあります(AWS 側に対応物なし)。
+- **ターゲット再同期** — `lcgw sync` は `SynchronizeGatewayTargets` の対応物:
+  稼働中のゲートウェイ上で MCP ターゲットが上流のツールを再発見します。再起動不要
+  (AWS の非同期 202 スタイル API と違い、同期実行)。さらに AWS 側に対応物のない
+  開発ループ用のおまけとして、`lcgw tail` が全ツール呼び出しをライブ表示します。
 
 ```yaml
 targets:
@@ -43,12 +47,31 @@ targets:
     auth: { type: bearer, value: "${TOKEN}" }   # 環境変数から展開されます
 ```
 
+## ハイブリッドデバッグ(本物の AWS を混ぜる)
+
+`aws` extra をインストールすると、ローカルゲートウェイに**本物の AWS リソース**を
+ローカルターゲットと並べて混在させられます — 1 つのツールをローカルで反復開発しつつ、
+残りの本番ツールセットは本物のまま:
+
+- **`type: aws-gateway`** — **デプロイ済みの AgentCore Gateway** をプロキシ:
+  そのツールは `remoteTarget___tool` の名前**そのまま**(プレフィックスなし)で
+  通ります。認証は bearer(OAuth/JWT)または SigV4(IAM)。AWS 側に対応物はなく、
+  純粋にハイブリッドワークフロー用の機能です。
+- **`lambda.backend: aws`** — 第 3 の Lambda バックエンド: ツールスキーマは
+  ローカル、ハンドラーは**デプロイ済みの本物の関数**(同じ AgentCore ClientContext
+  コントラクト、CloudWatch ログ末尾の取得付き。副作用のある呼び出しが黙って
+  二重実行されないよう、リトライは無効化)。
+
+[`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) と
+[設定リファレンス](docs/configuration.md) を参照してください。
+
 ## ローカル Lambda バックエンド
 
 | backend  | Docker | 忠実度 | 用途 |
 |----------|--------|--------|------|
 | `native` | 不要   | **ターゲットごとに 1 サブプロセス**(実プロセス分離 — モノレポ安全)、忠実な `event`/`context`、エラーエンベロープ、CloudWatch 風ログ、**ホットリロード**、**ハードタイムアウト** | 高速な開発ループ |
 | `sam`    | 必要   | `sam local start-lambda` 経由の**本物の** AWS Lambda Linux ランタイム | AWS 投入前の Linux ランタイム忠実性チェック |
+| `aws`    | 不要   | **デプロイ済みの本物の関数**(`aws` extra + 認証情報が必要) | 本番相当リソースに対するハイブリッドデバッグ |
 
 ## ドキュメント
 
@@ -63,6 +86,13 @@ targets:
 ```bash
 uv tool install localcore-gateway      # または: pipx install localcore-gateway
 uvx --from localcore-gateway lcgw --help   # 使い捨て実行(インストール不要)
+```
+
+本物の AWS へのパススルー機能(`type: aws-gateway`、`lambda.backend: aws`)を使う
+場合は `aws` extra をインストールしてください:
+
+```bash
+uv tool install 'localcore-gateway[aws]'   # または: pip install 'localcore-gateway[aws]'
 ```
 
 ## クイックスタート
@@ -94,6 +124,8 @@ lcgw tools  -c gateway.yaml
 lcgw invoke -c gateway.yaml demo___add --data '{"a":2,"b":40}'
 lcgw serve  -c gateway.yaml            # MCP は http://127.0.0.1:8080/mcp
 lcgw dev    -c gateway.yaml            # 同上 + ホットリロード
+lcgw tail   -c gateway.yaml            # 呼び出しのライブ表示(稼働中のゲートウェイ)
+lcgw sync   -c gateway.yaml            # MCP ターゲットの再同期(稼働中のゲートウェイ)
 ```
 
 任意の MCP クライアントを `http://127.0.0.1:8080/mcp` に向けてください。より充実した例
@@ -138,9 +170,13 @@ lambda:
   外側です)。
 - AgentCore 組み込みのセマンティックツール検索(`x_amz_bedrock_agentcore_search`)は
   **未実装**です(意図的な省略)。
-- ターゲット種別: **Lambda**、**OpenAPI**、**MCP パススルー**は実装済み。Smithy は
-  未対応です。アウトバウンド認証(OpenAPI と MCP パススルー共通)は静的 API キー
-  (ヘッダー/クエリ)とベアラートークンをカバーします。OAuth 2LO はスコープ外です。
+- ターゲット種別: **Lambda**、**OpenAPI**、**MCP パススルー**、**AWS ゲートウェイ
+  パススルー**は実装済み。Smithy は未対応です。アウトバウンド認証(OpenAPI と MCP
+  パススルー共通)は静的 API キー(ヘッダー/クエリ)とベアラートークンをカバー
+  します。OAuth 2LO はスコープ外です。
+- ハイブリッド機能(`type: aws-gateway`、`lambda.backend: aws`)は `aws` extra と
+  本物の AWS 認証情報が必要で、AWS 側の挙動(コールドスタート、IAM、クォータ)に
+  従います — ローカルでは何もエミュレートしません。
 
 ## ライセンス
 
