@@ -21,7 +21,7 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, `type: mcp`, or `type: aws-gateway` (mixable) |
+| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, `type: mcp`, `type: aws-gateway`, or `type: mock` (mixable) |
 
 ## `server` (`ServerConfig`)
 
@@ -32,6 +32,23 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 | `port` | int | `8080` | |
 | `path` | string | `/mcp` | |
 | `history` | int | `1000` | invocation-history ring buffer size (backs `lcgw tail` / `GET /-/invocations`) |
+| `contract_checks` | `off` \| `warn` \| `error` | `off` | validate tool arguments/results against the declared JSON Schemas (below) |
+
+### `contract_checks` — catching schema drift locally
+
+A local dev aid, **off by default for fidelity**: the real gateway validates
+neither arguments nor results, and neither does this stack by default (note:
+the python MCP SDK's *client* validates results on its own — that's the
+consumer's stack, not the gateway). With checks on, every invocation is
+validated at the gateway — arguments against `inputSchema` before dispatch,
+successful results against `outputSchema` (when declared) after:
+
+- `warn` — the payload still passes through, but a WARNING is logged and the
+  invocation record gets a `contract_violation` field (`lcgw tail` marks the
+  line with `[contract: ...]`).
+- `error` — the call returns the standard error envelope with
+  `errorType: "ContractViolation"` instead of the result (argument
+  violations short-circuit before the backend is invoked).
 
 The MCP endpoint is `http://{host}:{port}{path}`. The server also exposes a
 small local **admin surface** outside the MCP path — `POST /-/sync` (target
@@ -44,7 +61,7 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
 `targets` is a list; each entry is discriminated by `type` (`lambda`,
-`openapi`, `mcp`, or `aws-gateway`). You can mix any of these.
+`openapi`, `mcp`, `aws-gateway`, or `mock`). You can mix any of these.
 
 ## A Lambda target (`type: lambda`)
 
@@ -229,6 +246,48 @@ targets:
 ```
 
 Full hybrid workflow example: [`examples/hybrid_config.yaml`](../examples/hybrid_config.yaml).
+
+## A mock target (`type: mock`)
+
+Tools declared entirely in config with **canned outcomes** — develop and
+test the agent before the real tools exist, then swap the target type
+without touching the agent. **Local-only, no AWS analog.** Static for
+`lcgw sync` purposes.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `mock` | `mock` | |
+| `name` | string | required | tools are exposed as `<name>___<tool>` |
+| `tools` | list | required, non-empty | mocked tools (below) |
+
+Each tool is a normal [ToolSpec](#a-tool-toolspec) (name / description /
+`inputSchema` / `outputSchema`, advertised via `tools/list` as usual) plus
+**exactly one** of:
+
+| Key | Type | Notes |
+|---|---|---|
+| `response` | any YAML value | returned verbatim as the tool payload (`response: null` is a valid canned value) |
+| `error` | `{message, type}` | returned as the standard error envelope (`errorMessage`/`errorType`); `type` defaults to `MockError` |
+
+Arguments are accepted and ignored (with `contract_checks` on they are still
+schema-validated first).
+
+```yaml
+targets:
+  - type: mock
+    name: billing
+    tools:
+      - name: invoice
+        description: Canned invoice while the real tool is being built.
+        inputSchema:
+          type: object
+          properties: { order_id: { type: string } }
+        response: { total: 12.5, currency: USD }
+      - name: refund
+        error: { message: refunds not implemented yet, type: NotImplemented }
+```
+
+Pairs well with [`localcore_gateway.testing`](testing.md) for pytest use.
 
 ## `lambda` (`LambdaFunctionConfig`)
 

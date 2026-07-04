@@ -68,6 +68,19 @@ rest of your production toolset stays real:
 See [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) and the
 [configuration reference](docs/configuration.md).
 
+## Testing & contracts (local-only extras)
+
+- **Mock targets** (`type: mock`) — tools declared entirely in config with
+  canned responses/errors, so the agent can be developed before the tools
+  exist. No AWS analog.
+- **Contract checks** (`server.contract_checks: warn|error`) — validate tool
+  arguments and results against the declared JSON Schemas at the gateway,
+  catching schema/handler drift before deploying. Off by default (the real
+  gateway doesn't validate).
+- **`localcore_gateway.testing`** — public pytest helpers: `serve_gateway`
+  spins up the full gateway on an ephemeral port, `call_tool` makes one-shot
+  assertions. See [Testing your handlers](docs/testing.md).
+
 ## Local Lambda backends
 
 | backend  | Docker | fidelity | use it for |
@@ -81,6 +94,7 @@ See [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) and the
 - [Architecture](docs/architecture.md) — request flow, AgentCore contract mapping, component map
 - [Configuration reference](docs/configuration.md) — every config field
 - [Writing Lambda handlers](docs/lambda-handlers.md) — the handler contract, multi-tool, errors, logs, native vs sam
+- [Testing your handlers](docs/testing.md) — `localcore_gateway.testing`, mock targets, contract checks in pytest
 - [CLI reference](docs/cli.md) — `serve` / `dev` / `tools` / `invoke`
 - [Connecting agents](docs/connecting-agents.md) — point an MCP client at it; promote to real AWS
 
@@ -173,9 +187,10 @@ tools; the handler branches on `bedrockAgentCoreToolName`.
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)
   is **not implemented** (intentionally omitted).
 - Target types: **Lambda**, **OpenAPI**, **MCP-passthrough**, and
-  **AWS-gateway passthrough** are implemented; Smithy is not yet. Outbound
-  auth (OpenAPI and MCP-passthrough alike) covers static API key
-  (header/query) and bearer; OAuth 2LO is out of scope.
+  **AWS-gateway passthrough** are implemented (plus local-only **mock**
+  targets); Smithy is not yet. Outbound auth (OpenAPI and MCP-passthrough
+  alike) covers static API key (header/query) and bearer; OAuth 2LO is out
+  of scope.
 - The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) require
   the `aws` extra and real AWS credentials, and are subject to AWS-side
   behavior (cold starts, IAM, quotas) — nothing local emulates them.

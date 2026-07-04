@@ -15,8 +15,9 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
+import jsonschema
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.tools import Tool, ToolResult
@@ -24,25 +25,38 @@ from pydantic.json_schema import SkipJsonSchema
 
 from localcore_gateway.config import GatewayConfig
 from localcore_gateway.history import InvocationLog
-from localcore_gateway.targets.base import NAME_SEP, Target, ToolDef
+from localcore_gateway.targets.base import NAME_SEP, Target, ToolDef, ToolOutcome
 from localcore_gateway.targets.lambda_target import LambdaTarget
 
 log = logging.getLogger("lcgw")
 
 __all__ = ["NAME_SEP", "build_gateway", "build_targets", "sync_targets"]
 
+ContractChecks = Literal["off", "warn", "error"]
 
-def _to_tool_result(payload: Any) -> ToolResult:
+
+def _to_tool_result(payload: Any, meta: dict[str, Any] | None = None) -> ToolResult:
     if isinstance(payload, str):
-        return ToolResult(content=payload)
+        return ToolResult(content=payload, meta=meta)
     if isinstance(payload, dict):
         return ToolResult(
             content=json.dumps(payload, ensure_ascii=False, default=str),
             structured_content=payload,
+            meta=meta,
         )
     if isinstance(payload, (list, int, float, bool)) or payload is None:
-        return ToolResult(content=json.dumps(payload, default=str))
-    return ToolResult(content=str(payload))
+        return ToolResult(content=json.dumps(payload, default=str), meta=meta)
+    return ToolResult(content=str(payload), meta=meta)
+
+
+def _violation(instance: Any, schema: dict[str, Any], what: str) -> str | None:
+    """One line describing the first JSON-Schema violation, or None."""
+    try:
+        jsonschema.validate(instance=instance, schema=schema)
+    except jsonschema.ValidationError as e:
+        path = "/".join(str(p) for p in e.absolute_path)
+        return f"{what}{'/' + path if path else ''}: {e.message}"
+    return None
 
 
 class GatewayTool(Tool):
@@ -50,13 +64,32 @@ class GatewayTool(Tool):
 
     dispatch: SkipJsonSchema[Callable[[dict[str, Any]], Any]]
     history: SkipJsonSchema[Any]  # InvocationLog (Any: pydantic can't schema it)
+    contract_checks: SkipJsonSchema[str] = "off"  # server.contract_checks
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        checks = self.contract_checks
         start = time.monotonic()
-        outcome = await self.dispatch(arguments)
+
+        # Contract checks, uniform across target types. Input side: neither
+        # fastmcp nor the MCP SDK validates arguments against the input
+        # schema by default (fastmcp's strict_input_validation is False), so
+        # this is the only argument gate. `off` = faithful: the real gateway
+        # does not validate either side.
+        violation = _violation(arguments, self.parameters, "arguments") if checks != "off" else None
+        if violation is not None and checks == "error":
+            outcome = ToolOutcome(payload=_contract_error(violation), is_error=True)
+        else:
+            outcome = await self.dispatch(arguments)
+            if checks != "off" and violation is None and not outcome.is_error and self.output_schema is not None:
+                violation = _violation(outcome.payload, self.output_schema, "result")
+                if violation is not None and checks == "error":
+                    outcome = ToolOutcome(payload=_contract_error(violation), is_error=True, logs=outcome.logs)
+
         duration_ms = (time.monotonic() - start) * 1000
         for line in outcome.logs:
             log.info("[%s] %s", self.name, line)
+        if violation is not None:
+            log.warning("%s contract violation: %s", self.name, violation)
         # Record uniformly across target types (backs `lcgw tail`), and log
         # a one-line summary (the target logs above are already logged --
         # this is just the invoke itself).
@@ -67,6 +100,7 @@ class GatewayTool(Tool):
             is_error=outcome.is_error,
             duration_ms=duration_ms,
             logs=outcome.logs,
+            contract_violation=violation,
         )
         log.info("%s %s in %.0f ms", self.name, "ERROR" if outcome.is_error else "OK", duration_ms)
         if outcome.is_error:
@@ -75,7 +109,18 @@ class GatewayTool(Tool):
                 if not isinstance(outcome.payload, str)
                 else outcome.payload
             )
-        return _to_tool_result(outcome.payload)
+        # The MCP SDK's wire layer independently hard-errors on
+        # output-schema violations -- but only when the result flows as a
+        # (content, structured) tuple; a full CallToolResult (meta set)
+        # bypasses it (pinned <3.3). The real gateway does no output
+        # validation, so bypass whenever an output schema is advertised and
+        # let `server.contract_checks` be the single, opt-in gate.
+        meta = {"lcgw": {"contractChecks": checks}} if self.output_schema is not None else None
+        return _to_tool_result(outcome.payload, meta=meta)
+
+
+def _contract_error(violation: str) -> dict[str, str]:
+    return {"errorMessage": f"contract violation: {violation}", "errorType": "ContractViolation"}
 
 
 def _make_dispatch(target: Target, tool_name: str):
@@ -90,7 +135,12 @@ def _full_name(target: Target, tool_name: str) -> str:
     return f"{target.name}{NAME_SEP}{tool_name}" if target.prefix_tools else tool_name
 
 
-def _make_gateway_tool(target: Target, td: ToolDef, history: InvocationLog) -> GatewayTool:
+def _make_gateway_tool(
+    target: Target,
+    td: ToolDef,
+    history: InvocationLog,
+    contract_checks: ContractChecks,
+) -> GatewayTool:
     kw: dict[str, Any] = {}
     if td.output_schema is not None:
         kw["output_schema"] = td.output_schema
@@ -100,6 +150,7 @@ def _make_gateway_tool(target: Target, td: ToolDef, history: InvocationLog) -> G
         parameters=td.input_schema or {"type": "object"},
         dispatch=_make_dispatch(target, td.name),
         history=history,
+        contract_checks=contract_checks,
         **kw,
     )
 
@@ -121,6 +172,10 @@ def build_targets(cfg: GatewayConfig) -> list[Target]:
             from localcore_gateway.targets.aws_gateway_target import AWSGatewayTarget
 
             targets.append(AWSGatewayTarget(tc, cfg))
+        elif tc.type == "mock":
+            from localcore_gateway.targets.mock_target import MockTarget
+
+            targets.append(MockTarget(tc))
         else:  # pragma: no cover - config validation prevents this
             raise ValueError(f"unsupported target type: {tc.type!r}")
     return targets
@@ -155,7 +210,7 @@ def build_gateway(cfg: GatewayConfig, history: InvocationLog | None = None) -> t
                     f"is already registered by target {owners[full]!r}"
                 )
             owners[full] = target.name
-            mcp.add_tool(_make_gateway_tool(target, td, history))
+            mcp.add_tool(_make_gateway_tool(target, td, history, cfg.server.contract_checks))
             tool_count += 1
 
     log.info(
@@ -172,6 +227,7 @@ async def _resync_target(
     target: Target,
     history: InvocationLog,
     taken: dict[str, str],
+    contract_checks: ContractChecks,
 ) -> dict[str, list[str]] | None:
     """Run ``target.resync()`` and reconcile the live tool registry; None = static.
 
@@ -204,7 +260,7 @@ async def _resync_target(
     for n in removed + updated:
         mcp.local_provider.remove_tool(_full_name(target, n))
     for n in updated + added:
-        mcp.add_tool(_make_gateway_tool(target, new[n], history))
+        mcp.add_tool(_make_gateway_tool(target, new[n], history, contract_checks))
     return {"added": added, "removed": removed, "updated": updated}
 
 
@@ -213,6 +269,7 @@ async def sync_targets(
     targets: list[Target],
     history: InvocationLog,
     only: str | None = None,
+    contract_checks: ContractChecks = "off",
 ) -> dict[str, Any]:
     """Local SynchronizeGatewayTargets analog (POST /-/sync, `lcgw sync`).
 
@@ -228,7 +285,7 @@ async def sync_targets(
             continue
         taken = {_full_name(t, td.name): t.name for t in targets if t is not target for td in t.list_tools()}
         try:
-            diff = await _resync_target(mcp, target, history, taken)
+            diff = await _resync_target(mcp, target, history, taken, contract_checks)
         except Exception as exc:  # noqa: BLE001  # per-target error, keep going
             results[target.name] = {"error": str(exc)}
             continue
