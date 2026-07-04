@@ -21,7 +21,7 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, or `type: mcp` (mixable) |
+| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, `type: mcp`, or `type: aws-gateway` (mixable) |
 
 ## `server` (`ServerConfig`)
 
@@ -44,7 +44,7 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
 `targets` is a list; each entry is discriminated by `type` (`lambda`,
-`openapi`, or `mcp`). You can mix any of these.
+`openapi`, `mcp`, or `aws-gateway`). You can mix any of these.
 
 ## A Lambda target (`type: lambda`)
 
@@ -178,25 +178,92 @@ targets:
   (the SynchronizeGatewayTargets analog; see [cli.md](cli.md)) to
   re-discover without a restart.
 
+## An AWS-gateway passthrough target (`type: aws-gateway`)
+
+A **real deployed AgentCore Gateway**, proxied into the local one. No AWS
+analog as a target type — it exists purely for **hybrid debugging**: run the
+one target you're developing locally (any type above) while every other tool
+of your production toolset passes through to the deployed gateway, all
+behind one local MCP endpoint your agent points at. Requires the `aws` extra
+for `sigv4` auth (`pip install 'localcore-gateway[aws]'`).
+
+**Naming:** the deployed gateway's tools already carry AgentCore's
+`remoteTarget___tool` names and are exposed **verbatim** — no local
+`<name>___` prefix (re-prefixing would double it). `name` is for
+identification/logging only (`lcgw sync --target`, log lines). A name
+collision with any other target's tool is an error: at build a
+`ValueError`, at `lcgw sync` that target's error in the response (resolve
+the collision and restart).
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `aws-gateway` | `aws-gateway` | |
+| `name` | string | required | identification/logging only; tools are NOT prefixed |
+| `url` | string | required | the deployed gateway's MCP endpoint (streamable HTTP) |
+| `headers` | map<str,str> | `{}` | static headers sent with every request |
+| `auth` | object | `{type: none}` | `bearer` or `sigv4` (below) |
+| `timeout_sec` | float | `30.0` | per-request timeout |
+| `tools` | list[string] | `[]` | optional allowlist of remote tool names (already-prefixed form) |
+
+Everything else (eager discovery, one persistent re-opened session, `lcgw
+sync` re-discovery, error mapping) behaves exactly like an `mcp` target.
+
+### `auth` (`AWSGatewayAuthConfig`)
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `none` \| `bearer` \| `sigv4` | `none` | |
+| `value` | string | – | the token (required for `bearer`) — OAuth/JWT-configured gateways |
+| `region` | string | profile chain's region | `sigv4`: signing region; no region anywhere is a startup error |
+| `profile` | string | default credential chain | `sigv4`: AWS profile |
+
+`sigv4` (IAM-configured gateways) SigV4-signs every request for the
+`bedrock-agentcore` service via botocore, body hash included.
+
+```yaml
+targets:
+  - type: aws-gateway
+    name: prod
+    url: https://<gateway-id>.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp
+    auth: { type: sigv4, region: us-east-1 }
+```
+
+Full hybrid workflow example: [`examples/hybrid_config.yaml`](../examples/hybrid_config.yaml).
+
 ## `lambda` (`LambdaFunctionConfig`)
 
 | Key | Type | Default | Applies to |
 |---|---|---|---|
-| `backend` | `native` \| `sam` | `native` | – |
+| `backend` | `native` \| `sam` \| `aws` | `native` | – |
 | `handler` | string | – | **native** (required): `module.func` or `path/to/file.py:func` |
 | `code_root` | string \| list[string] | config file dir | **native**: dir(s) prepended to `sys.path`. Relative paths resolve against the config dir |
 | `python` | string | gateway's interpreter | **native**: Python executable for this target's worker (a path relative to the config dir, or a PATH command like `python3.12`). Path form is made absolute but **symlinks are not followed** (a venv's `bin/python` is a symlink — following it would lose the venv). Lets each target run under its own venv → its own deps + version |
 | `sam_endpoint` | string | `http://127.0.0.1:3001` | **sam** |
 | `sam_function` | string | – | **sam** (required): logical name in the SAM template |
-| `function_name` | string | `local-function` | both (→ `context.function_name`) |
-| `memory_mb` | int | `128` | both (→ `context.memory_limit_in_mb`) |
-| `timeout_sec` | float | `30.0` | both (native hard-kills the worker on timeout) |
-| `env` | map<str,str> | `{}` | both (process env during invoke) |
+| `aws_function` | string | – | **aws** (required): deployed function name or full ARN |
+| `aws_profile` | string | default credential chain | **aws**: AWS profile for the boto3 session |
+| `function_name` | string | `local-function` | native/sam (→ `context.function_name`) |
+| `memory_mb` | int | `128` | native/sam (→ `context.memory_limit_in_mb`) |
+| `timeout_sec` | float | `30.0` | all (native hard-kills the worker; aws: the boto3 read timeout) |
+| `env` | map<str,str> | `{}` | native/sam (process env during invoke) |
 | `env_file` | string | – | **native**: `.env`-style file merged into the invoke env; `env` overrides it. Relative to the config dir |
-| `region` | string | `us-east-1` | both (ARN / `AWS_REGION`) |
+| `region` | string | `us-east-1` | native/sam: ARN / `AWS_REGION`; **aws**: the boto3 client region |
 
 Validation: `backend: native` requires `handler`; `backend: sam` requires
-`sam_function`.
+`sam_function`; `backend: aws` requires `aws_function`.
+
+### `backend: aws` — invoke a REAL deployed function
+
+The gateway runs locally, the handler is your **deployed** Lambda (hybrid
+debugging; nothing emulated). Requires the `aws` extra
+(`pip install 'localcore-gateway[aws]'` — a clear error tells you if it's
+missing) and AWS credentials (`aws_profile` or the default chain). Same
+AgentCore contract as the other backends — event = tool arguments,
+`bedrockAgentCoreToolName` via the standard Lambda ClientContext — plus
+`LogType: Tail`, so the invocation's last 4 KB of CloudWatch logs surface in
+the usual logs channel (`lcgw invoke` stderr, `lcgw tail`). Retries are
+**disabled** (`max_attempts: 0`): a tool invoke is side-effecting, and
+botocore's silent retry-on-timeout could double-invoke it.
 
 ## A tool (`ToolSpec`)
 

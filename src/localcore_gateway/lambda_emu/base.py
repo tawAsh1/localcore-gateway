@@ -66,4 +66,9 @@ def make_invoker(
         return NativeLambdaInvoker(spec, code_roots=code_roots, env_file=env_file, python=python)
     if spec.backend == "sam":
         return SamLambdaInvoker(spec)
+    if spec.backend == "aws":
+        # Lazy: boto3 is the optional `aws` extra.
+        from localcore_gateway.lambda_emu.aws import AwsLambdaInvoker
+
+        return AwsLambdaInvoker(spec)
     raise ValueError(f"unknown lambda backend: {spec.backend!r}")

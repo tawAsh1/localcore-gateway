@@ -62,10 +62,13 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
 | `localcore_gateway.targets.openapi_target` | OpenAPI → MCP (FastMCP engine, verbatim `operationId` naming, outbound auth) |
 | `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server (streamable HTTP, or local stdio as a convenience), verbatim tool names |
+| `localcore_gateway.targets.aws_gateway_target` | proxies a REAL deployed AgentCore Gateway (hybrid debugging): MCPTarget subclass, un-prefixed verbatim names, bearer/SigV4 auth |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
 | `localcore_gateway.lambda_emu.sam` | drives `sam local start-lambda` |
+| `localcore_gateway.lambda_emu.aws` | invokes a REAL deployed function via boto3 (`aws` extra) |
+| `localcore_gateway.aws_deps` | optional-`aws`-extra gate (actionable error when boto3 is missing) |
 | `localcore_gateway.history` | in-memory invocation ring buffer (`lcgw tail` backend) |
 | `localcore_gateway.app` | ASGI app assembly (MCP endpoint + `/-/sync`, `/-/invocations` admin routes) + uvicorn `--factory` entrypoint |
 | `localcore_gateway.__main__` | `lcgw` CLI |
@@ -74,15 +77,24 @@ a separate API, so it has no wire-level analog.
 
 - **FastMCP 3.x, pinned `>=3.2,<3.3`.** The MCP/aggregation surface is reused,
   not reimplemented. Pinned because the 3.x API moves fast.
-- **One `LambdaInvoker` interface, two backends.** `native` runs one
+- **One `LambdaInvoker` interface, three backends.** `native` runs one
   subprocess worker per target (no Docker, real `sys.path`/`sys.modules`
   isolation → monorepo-safe, hard timeout); `sam` gives full Linux-runtime
-  fidelity. Switch per target via config.
+  fidelity; `aws` invokes the real deployed function (hybrid debugging;
+  boto3 via the optional `aws` extra, retries off so a side-effecting invoke
+  is never silently retried). Switch per target via config.
 - **Tools registered directly, not via FastMCP mount/namespace.** Each
   `(target, tool)` becomes a `GatewayTool` named `target___tool` with the
   tool's explicit JSON Schema and a closure that dispatches into the target.
   This gives exact AgentCore naming with no dependence on FastMCP's namespace
-  separator internals.
+  separator internals. One exception: `aws-gateway` passthrough targets set
+  `Target.prefix_tools = False` and register the remote gateway's
+  already-prefixed names **verbatim** (re-prefixing would double them);
+  build and `lcgw sync` reject name collisions instead of shadowing.
+- **boto3 is optional.** The core gateway stays AWS-SDK-free; the real-AWS
+  passthrough features gate their imports through
+  `localcore_gateway.aws_deps` so a missing extra fails with the install
+  command in the message.
 
 ## Known limitations
 
@@ -97,6 +109,10 @@ a separate API, so it has no wire-level analog.
   is not. OpenAPI reuses FastMCP's spec→HTTP engine but overrides naming to
   the verbatim `operationId` for AgentCore fidelity; outbound auth is static
   API key (header/query) or bearer only (no OAuth 2LO).
+- The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) talk to
+  real AWS and have no AgentCore analog as *local* concepts; they need the
+  `aws` extra and credentials, and inherit AWS-side behavior (cold starts,
+  IAM, service quotas) that is out of this project's hands.
 - MCP-passthrough keeps one persistent upstream `Client` session (opened
   lazily on first call); a call that hits a dead session (upstream
   restart/dropped connection) fails as a tool error, then the session is

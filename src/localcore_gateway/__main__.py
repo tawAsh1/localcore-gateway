@@ -153,7 +153,9 @@ def _format_sync_result(name: str, res: object) -> tuple[str, bool]:
     line = f"{name}: +{len(res['added'])} added, -{len(res['removed'])} removed, ~{len(res['updated'])} updated"
     for mark, key in (("+", "added"), ("-", "removed"), ("~", "updated")):
         for tool in res[key]:
-            line += f"\n  {mark} {name}{NAME_SEP}{tool}"
+            # Raw (un-prefixed) names: aws-gateway targets expose verbatim
+            # names, so prepending `<target>___` here would be wrong there.
+            line += f"\n  {mark} {tool}"
     return line, False
 
 

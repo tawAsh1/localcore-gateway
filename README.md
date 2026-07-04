@@ -50,12 +50,31 @@ targets:
     auth: { type: bearer, value: "${TOKEN}" }   # expanded from the environment
 ```
 
+## Hybrid debugging (mix in real AWS)
+
+With the `aws` extra installed, the local gateway can mix **real AWS
+resources** in next to local ones — iterate on one tool locally while the
+rest of your production toolset stays real:
+
+- **`type: aws-gateway`** — proxy a **deployed AgentCore Gateway**: its tools
+  pass through with their `remoteTarget___tool` names **verbatim**
+  (unprefixed); auth is bearer (OAuth/JWT) or SigV4 (IAM). No AWS analog —
+  purely a hybrid-workflow tool.
+- **`lambda.backend: aws`** — a third Lambda backend: the tool schema is
+  local, the handler is the **real deployed function** (same AgentCore
+  ClientContext contract, CloudWatch log tail included; retries disabled so
+  a side-effecting invoke is never silently doubled).
+
+See [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) and the
+[configuration reference](docs/configuration.md).
+
 ## Local Lambda backends
 
 | backend  | Docker | fidelity | use it for |
 |----------|--------|----------|------------|
 | `native` | no     | **one subprocess per target** (real process isolation — monorepo-safe), faithful `event`/`context`, error envelope, CloudWatch-style logs, **hot reload**, **hard timeout** | the fast dev loop |
 | `sam`    | yes    | the **real** AWS Lambda Linux runtime via `sam local start-lambda` | full Linux-runtime fidelity check before AWS |
+| `aws`    | no     | the **real deployed function** (requires the `aws` extra + credentials) | hybrid debugging against production-like resources |
 
 ## Documentation
 
@@ -70,6 +89,13 @@ targets:
 ```bash
 uv tool install localcore-gateway      # or: pipx install localcore-gateway
 uvx --from localcore-gateway lcgw --help   # one-off, no install
+```
+
+For the real-AWS passthrough features (`type: aws-gateway`,
+`lambda.backend: aws`), install the `aws` extra:
+
+```bash
+uv tool install 'localcore-gateway[aws]'   # or: pip install 'localcore-gateway[aws]'
 ```
 
 ## Quick start
@@ -146,10 +172,13 @@ tools; the handler branches on `bedrockAgentCoreToolName`.
   Invoke API).
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)
   is **not implemented** (intentionally omitted).
-- Target types: **Lambda**, **OpenAPI**, and **MCP-passthrough** are
-  implemented; Smithy is not yet. Outbound auth (OpenAPI and MCP-passthrough
-  alike) covers static API key (header/query) and bearer; OAuth 2LO is out of
-  scope.
+- Target types: **Lambda**, **OpenAPI**, **MCP-passthrough**, and
+  **AWS-gateway passthrough** are implemented; Smithy is not yet. Outbound
+  auth (OpenAPI and MCP-passthrough alike) covers static API key
+  (header/query) and bearer; OAuth 2LO is out of scope.
+- The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) require
+  the `aws` extra and real AWS credentials, and are subject to AWS-side
+  behavior (cold starts, IAM, quotas) — nothing local emulates them.
 
 ## License
 

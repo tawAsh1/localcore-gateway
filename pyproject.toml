@@ -32,6 +32,10 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+# Real-AWS passthrough (`type: aws-gateway` targets, `lambda.backend: aws`).
+aws = ["boto3>=1.34"]
+
 [project.scripts]
 lcgw = "localcore_gateway.__main__:main"
 
@@ -110,4 +114,6 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.6",
+    # The `aws` extra, so its tests (botocore Stubber, no real AWS) always run.
+    "boto3>=1.34",
 ]
