@@ -6,12 +6,22 @@ the **config file's directory** unless absolute.
 
 Full working example: [`examples/config.yaml`](../examples/config.yaml).
 
+## Environment variable expansion
+
+`${VAR}` in any string value is replaced with the environment variable `VAR`
+when the config is loaded — the local analog of AgentCore's credential
+providers: secrets stay out of the config file. A reference to an **unset**
+variable is a config error (so a placeholder is never sent as a credential).
+Escape with `$${VAR}` to get a literal `${VAR}`; bare `$VAR` (no braces) is
+left untouched. Expansion applies to the config file itself only — not to
+files it references (`spec_file`, `tool_schema_file`, `env_file`).
+
 ## Top level (`GatewayConfig`)
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `targets` | list | `[]` | gateway targets; each is `type: lambda` or `type: openapi` (mixable) |
+| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, or `type: mcp` (mixable) |
 
 ## `server` (`ServerConfig`)
 
@@ -28,8 +38,8 @@ There is **no inbound authentication** (this is a local dev tool). Bind to
 loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
-`targets` is a list; each entry is discriminated by `type` (`lambda` or
-`openapi`). You can mix both.
+`targets` is a list; each entry is discriminated by `type` (`lambda`,
+`openapi`, or `mcp`). You can mix any of these.
 
 ## A Lambda target (`type: lambda`)
 
@@ -82,8 +92,84 @@ targets:
   - type: openapi
     name: weather
     spec_file: openapi.yaml
+    # ${KEY} is expanded from the environment at load time (see
+    # "Environment variable expansion" above).
     auth: { type: apikey, in: header, name: X-API-Key, value: "${KEY}" }
 ```
+
+## An MCP-passthrough target (`type: mcp`)
+
+Another MCP server's tools, proxied. Remote tool names are used **verbatim**;
+the gateway adds the `<name>___` prefix uniformly (same as the other target
+types). **Faithful to AgentCore** for the `url` mode: the real gateway only
+ever speaks streamable HTTP to the upstream server. The `command` (stdio)
+mode is a **local-only convenience** with no AWS analog — it spawns a local
+MCP server subprocess instead of requiring one to already be listening over
+HTTP.
+
+Exactly one of `url` / `command` is required.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `mcp` | `mcp` | |
+| `name` | string | required | tools are `<name>___<tool>` |
+| `url` | string | – | upstream MCP server endpoint (streamable HTTP). Mutually exclusive with `command` |
+| `headers` | map<str,str> | `{}` | static headers sent with every request (`url` mode only) |
+| `auth` | object | `{type: none}` | outbound auth (below); `url` mode only |
+| `command` | string | – | command to spawn a local MCP server over stdio: a PATH command (e.g. `python3`), or a path resolved against the config dir with symlinks **not** followed (same rule as `lambda.python` — a venv's `bin/python` must stay a venv path). Mutually exclusive with `url` |
+| `args` | list[string] | `[]` | arguments passed to `command` (`command` mode only). Opaque to the gateway: script paths in here are resolved by the **child**, relative to its `cwd` |
+| `env` | map<str,str> | `{}` | extra environment variables for the subprocess (`command` mode only) |
+| `env_file` | string | – | `.env`-style file (KEY=VALUE per line) merged into the subprocess env; `env` overrides it (`command` mode only). Relative to the config dir |
+| `cwd` | string | – | subprocess working directory (`command` mode only), relative to the config dir; **defaults to the config dir** |
+| `timeout_sec` | float | `30.0` | per-request timeout |
+| `tools` | list[string] | `[]` | optional allowlist of upstream tool names to expose; unlisted tools are hidden. A name not found on the upstream server is a config-time error |
+
+Validation rejects mixed-mode fields rather than silently ignoring them:
+`headers` / `auth` require `url` (stdio has no HTTP headers/auth); `env` /
+`env_file` / `cwd` require `command` (not applicable to `url`).
+
+**Subprocess environment (`command` mode):** the child does **not** inherit
+the gateway's full environment. The MCP SDK spawns it with only a safe
+default subset (`HOME`, `PATH`, `SHELL`, `TERM`, `USER`, `LOGNAME` on POSIX),
+plus `env_file` then inline `env` merged on top (inline wins). Anything else
+the server needs must be passed explicitly.
+
+### `auth` (`OpenAPIAuthConfig`) — outbound, `url` mode only
+
+Reuses the same shape **and** engine as the OpenAPI target's `auth` (see
+above): bearer, or a static API key in a header or query param. It is applied
+as an `httpx.Auth` on every request the MCP client transport makes, so
+query-param keys work here too.
+
+```yaml
+targets:
+  # remote, streamable HTTP (AgentCore-faithful)
+  - type: mcp
+    name: mytools
+    url: http://127.0.0.1:9000/mcp
+    auth: { type: bearer, value: "${TOKEN}" }   # expanded from the environment
+    tools: [tool_a, tool_b]   # optional allowlist
+
+  # local, stdio (convenience only; no AWS analog)
+  - type: mcp
+    name: localtools
+    command: python       # PATH command; a path would resolve against this file's dir
+    args: [server.py]     # run by the child in its cwd (default: this file's dir)
+    env: { FOO: bar }
+    env_file: local.env   # optional; inline `env` wins
+```
+
+**Known limitations:**
+
+- Invocation keeps one persistent upstream session (opened lazily on first
+  call). If it dies (upstream restart, dropped connection), the call that
+  hits the dead session fails — surfaced as a tool error — and the session is
+  re-opened on a later call once the client has noticed the death.
+- Tool discovery happens once, at construction, connecting and disconnecting
+  separately from the persistent invocation session; for `command` (stdio)
+  mode this means the subprocess is spawned twice (once at startup for
+  discovery, once lazily on first call for invocation). Upstream tool-list
+  changes after startup are not picked up — restart the gateway.
 
 ## `lambda` (`LambdaFunctionConfig`)
 

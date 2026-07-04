@@ -31,6 +31,18 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   the operation's `operationId` **verbatim** (as the real gateway does, not a
   slugified form), spec-level security is ignored (auth configured out of
   band).
+- **MCP-passthrough targets** — another MCP server's tools are proxied
+  verbatim (remote tool names, unprefixed). Streamable HTTP is the
+  AgentCore-faithful mode; a local stdio `command` mode is also available as
+  a local-only convenience (no AWS analog).
+
+```yaml
+targets:
+  - type: mcp
+    name: mytools
+    url: http://127.0.0.1:9000/mcp
+    auth: { type: bearer, value: "${TOKEN}" }   # expanded from the environment
+```
 
 ## Local Lambda backends
 
@@ -86,7 +98,8 @@ lcgw dev    -c gateway.yaml            # same, with hot reload
 ```
 
 Point any MCP client at `http://127.0.0.1:8080/mcp`. Richer examples (multi
-target, `math_handlers.py`, Strands agent) are in [`examples/`](examples/).
+target, `math_handlers.py`, Strands agent, MCP-passthrough via
+`mcp_config.yaml`) are in [`examples/`](examples/).
 
 ### From source (development)
 
@@ -125,9 +138,10 @@ tools; the handler branches on `bedrockAgentCoreToolName`.
   Invoke API).
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)
   is **not implemented** (intentionally omitted).
-- Target types: **Lambda** and **OpenAPI** are implemented; MCP-passthrough
-  and Smithy are not yet. OpenAPI outbound auth covers static API key
-  (header/query) and bearer; OAuth 2LO is out of scope.
+- Target types: **Lambda**, **OpenAPI**, and **MCP-passthrough** are
+  implemented; Smithy is not yet. Outbound auth (OpenAPI and MCP-passthrough
+  alike) covers static API key (header/query) and bearer; OAuth 2LO is out of
+  scope.
 
 ## License
 
