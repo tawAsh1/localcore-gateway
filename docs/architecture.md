@@ -63,6 +63,7 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.targets.openapi_target` | OpenAPI → MCP (FastMCP engine, verbatim `operationId` naming, outbound auth) |
 | `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server (streamable HTTP, or local stdio as a convenience), verbatim tool names |
 | `localcore_gateway.targets.aws_gateway_target` | proxies a REAL deployed AgentCore Gateway (hybrid debugging): MCPTarget subclass, un-prefixed verbatim names, bearer/SigV4 auth |
+| `localcore_gateway.targets.mock_target` | mock target: config-declared tools with canned responses/errors (local-only, no AWS analog) |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
@@ -70,6 +71,7 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.lambda_emu.aws` | invokes a REAL deployed function via boto3 (`aws` extra) |
 | `localcore_gateway.aws_deps` | optional-`aws`-extra gate (actionable error when boto3 is missing) |
 | `localcore_gateway.history` | in-memory invocation ring buffer (`lcgw tail` backend) |
+| `localcore_gateway.testing` | **public** pytest helpers: `serve_gateway` / `call_tool` / `serve_asgi` (see [testing.md](testing.md)) |
 | `localcore_gateway.app` | ASGI app assembly (MCP endpoint + `/-/sync`, `/-/invocations` admin routes) + uvicorn `--factory` entrypoint |
 | `localcore_gateway.__main__` | `lcgw` CLI |
 
@@ -95,6 +97,14 @@ a separate API, so it has no wire-level analog.
   passthrough features gate their imports through
   `localcore_gateway.aws_deps` so a missing extra fails with the install
   command in the message.
+- **Contract checks are ours, opt-in, and uniform.** The real gateway
+  validates neither arguments nor results, so `server.contract_checks`
+  defaults to off. The MCP SDK's wire layer would independently hard-error
+  on output-schema violations; the gateway bypasses that (results are sent
+  as full CallToolResults — viable because fastmcp is pinned `<3.3`) so the
+  default stays faithful and one switch controls both sides. Note the
+  python MCP SDK's *client* also validates results on its own — that's the
+  consuming agent's stack, out of the gateway's hands.
 
 ## Known limitations
 
@@ -105,10 +115,11 @@ a separate API, so it has no wire-level analog.
   the Invoke API), so that backend reports only an invoke summary.
 - AgentCore's builtin semantic tool search
   (`x_amz_bedrock_agentcore_search`) is intentionally not implemented.
-- Lambda, OpenAPI, and MCP-passthrough target types are implemented; Smithy
-  is not. OpenAPI reuses FastMCP's spec→HTTP engine but overrides naming to
-  the verbatim `operationId` for AgentCore fidelity; outbound auth is static
-  API key (header/query) or bearer only (no OAuth 2LO).
+- Lambda, OpenAPI, and MCP-passthrough target types are implemented (plus
+  local-only mock targets); Smithy is not. OpenAPI reuses FastMCP's
+  spec→HTTP engine but overrides naming to the verbatim `operationId` for
+  AgentCore fidelity; outbound auth is static API key (header/query) or
+  bearer only (no OAuth 2LO).
 - The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) talk to
   real AWS and have no AgentCore analog as *local* concepts; they need the
   `aws` extra and credentials, and inherit AWS-side behavior (cold starts,

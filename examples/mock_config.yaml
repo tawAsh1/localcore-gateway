@@ -1,0 +1,36 @@
+# Mock targets: develop the agent before the tools exist.
+#
+#   lcgw serve  -c examples/mock_config.yaml
+#   lcgw invoke -c examples/mock_config.yaml billing___invoice --data '{"order_id":"42"}'
+#
+# Local-only, no AWS analog. Each tool is a normal tool spec (schemas are
+# advertised via tools/list as usual) plus exactly one canned outcome:
+# `response` (returned verbatim) or `error` (the standard error envelope).
+# Swap `type: mock` for the real target type later; the agent side is
+# unchanged. For pytest use, see docs/testing.md.
+
+server:
+  # Optional dev aid (off by default): validate arguments/results against
+  # the declared schemas. `warn` logs + flags in `lcgw tail`; `error` fails
+  # the call with a ContractViolation error.
+  # contract_checks: warn
+  port: 8080
+
+targets:
+  - type: mock
+    name: billing
+    tools:
+      - name: invoice
+        description: Canned invoice while the real tool is being built.
+        inputSchema:
+          type: object
+          properties: { order_id: { type: string } }
+          required: [order_id]
+        response: { total: 12.5, currency: USD }
+
+      - name: refund
+        description: Not built yet; always fails with a typed error.
+        inputSchema:
+          type: object
+          properties: { order_id: { type: string } }
+        error: { message: refunds not implemented yet, type: NotImplemented }

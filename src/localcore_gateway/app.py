@@ -47,7 +47,8 @@ def build_app(cfg: GatewayConfig) -> tuple[Any, Any, list[Any]]:
         if not isinstance(data, dict):
             return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
         only = data.get("target")
-        return JSONResponse({"targets": await sync_targets(mcp, targets, history, only=only)})
+        results = await sync_targets(mcp, targets, history, only=only, contract_checks=cfg.server.contract_checks)
+        return JSONResponse({"targets": results})
 
     @mcp.custom_route("/-/invocations", methods=["GET"])
     async def _invocations(request: Request) -> Response:

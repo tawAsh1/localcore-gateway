@@ -330,9 +330,55 @@ class AWSGatewayTargetConfig(BaseModel):
     )
 
 
+class MockErrorSpec(BaseModel):
+    """The canned error of a mock tool (becomes the standard error envelope)."""
+
+    message: str
+    type: str = "MockError"
+
+
+class MockToolSpec(ToolSpec):
+    """A ToolSpec plus exactly one canned outcome: `response` or `error`."""
+
+    response: Any = Field(
+        default=None,
+        description="Canned payload, returned verbatim (any YAML value; `response: null` is valid).",
+    )
+    error: MockErrorSpec | None = Field(
+        default=None,
+        description="Canned error ({message, type}); returned as the standard error envelope.",
+    )
+
+    @model_validator(mode="after")
+    def _check_outcome(self) -> MockToolSpec:
+        # Presence-based (not truthiness): `response: null` counts as set.
+        if ("response" in self.model_fields_set) == ("error" in self.model_fields_set):
+            raise ValueError("each mock tool needs exactly one of `response` / `error`")
+        return self
+
+
+class MockTargetConfig(BaseModel):
+    """A mock gateway target: tools declared entirely in config, canned outcomes.
+
+    Local-only, no AWS analog -- develop and test the agent before the real
+    tools exist. Each tool is a normal ToolSpec (schemas advertised as usual)
+    plus a canned `response` or `error`.
+    """
+
+    type: Literal["mock"] = "mock"
+    name: str = Field(description="Target name; tools are exposed as '<name>___<tool>'.")
+    tools: list[MockToolSpec] = Field(description="The mocked tools (required, non-empty).")
+
+    @model_validator(mode="after")
+    def _check_tools(self) -> MockTargetConfig:
+        if not self.tools:
+            raise ValueError("mock target needs at least one tool")
+        return self
+
+
 # Discriminated by `type`.
 TargetConfig = Annotated[
-    LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig | AWSGatewayTargetConfig,
+    LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig | AWSGatewayTargetConfig | MockTargetConfig,
     Field(discriminator="type"),
 ]
 
@@ -345,6 +391,12 @@ class ServerConfig(BaseModel):
     history: int = Field(
         default=1000,
         description="Invocation-history ring buffer size (backs `lcgw tail` / GET /-/invocations).",
+    )
+    contract_checks: Literal["off", "warn", "error"] = Field(
+        default="off",
+        description="Validate tool arguments/results against the declared JSON Schemas. "
+        "off (default) = faithful (the real gateway does not validate); warn = pass through "
+        "but log + flag the invocation record; error = return a ContractViolation error.",
     )
 
 

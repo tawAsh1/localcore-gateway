@@ -93,6 +93,8 @@ lcgw tail -c examples/config.yaml [-n N] [--json]
 - `--json`: emit raw JSONL records instead of formatted lines.
 - Backlog depth is the server's ring buffer (`server.history`, default 1000);
   argument/payload previews are truncated server-side at 4 KB each.
+- With `server.contract_checks: warn`, violating invocations are marked with
+  a `[contract: ...]` suffix (see [configuration.md](configuration.md)).
 - Exit code `0` on Ctrl-C, `1` if the server is unreachable.
 
 Both commands talk to a small local admin surface (`POST /-/sync`,

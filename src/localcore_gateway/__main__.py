@@ -186,10 +186,13 @@ def _format_invocation(rec: dict) -> str:
     """One tail line: time, status, tool, duration, compact args/result."""
     t = rec["time"][11:19]  # HH:MM:SS from the ISO timestamp
     status = "ERROR" if rec["is_error"] else "OK"
-    return (
+    line = (
         f"{t} {status:<5} {rec['tool']} ({rec['duration_ms']:.0f} ms) "
         f"args={_ellipsize(rec['arguments'], 60)} -> {_ellipsize(rec['payload'], 80)}"
     )
+    if rec.get("contract_violation"):
+        line += f" [contract: {_ellipsize(rec['contract_violation'], 60)}]"
+    return line
 
 
 def _cmd_tail(args: argparse.Namespace) -> int:

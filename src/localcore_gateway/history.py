@@ -44,6 +44,7 @@ class InvocationLog:
         is_error: bool,
         duration_ms: float,
         logs: list[str],
+        contract_violation: str | None = None,
     ) -> dict[str, Any]:
         """Append one invocation; returns the stored record."""
         self._seq += 1
@@ -60,6 +61,9 @@ class InvocationLog:
             "is_error": is_error,
             "duration_ms": round(duration_ms, 3),
             "logs": list(logs),
+            # Set when server.contract_checks caught a schema violation
+            # (also in `warn` mode, where the payload still passed through).
+            "contract_violation": contract_violation,
         }
         self._records.append(rec)
         return rec

@@ -53,6 +53,18 @@ targets:
 
 [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) と[設定リファレンス](docs/configuration.md)を参照してください。
 
+## テストとコントラクト(ローカル専用の追加機能)
+
+- **モックターゲット**(`type: mock`):ツールを設定ファイルだけで宣言し、あらかじめ決めた応答やエラーを返します。
+  実物のツールができる前にエージェント側を開発できます。
+  AWS 側に対応物はありません。
+- **コントラクトチェック**(`server.contract_checks: warn|error`):ツールの引数と結果を、宣言された JSON Schema に対してゲートウェイで検証します。
+  スキーマとハンドラーのずれをデプロイ前に手元で検出できます。
+  デフォルトはオフです(本物のゲートウェイは検証しないため)。
+- **`localcore_gateway.testing`**:公開の pytest ヘルパーです。
+  `serve_gateway` がゲートウェイ全体を一時ポートで起動し、`call_tool` で単発のアサーションが書けます。
+  [Testing your handlers](docs/testing.md) を参照してください。
+
 ## ローカル Lambda バックエンド
 
 | backend  | Docker | 忠実度 | 用途 |
@@ -66,6 +78,7 @@ targets:
 - [Architecture](docs/architecture.md):リクエストフロー、AgentCore コントラクトのマッピング、コンポーネントマップ
 - [Configuration reference](docs/configuration.md):全設定フィールド
 - [Writing Lambda handlers](docs/lambda-handlers.md):ハンドラーコントラクト、マルチツール、エラー、ログ、native と sam の違い
+- [Testing your handlers](docs/testing.md):`localcore_gateway.testing`、モックターゲット、pytest でのコントラクトチェック
 - [CLI reference](docs/cli.md):`serve` / `dev` / `tools` / `invoke`
 - [Connecting agents](docs/connecting-agents.md):MCP クライアントの接続、本物の AWS への昇格
 
@@ -152,7 +165,7 @@ lambda:
   Lambda の同時実行環境スケーリングは模していません。
 - `sam` の呼び出しごとのログは `sam local` のコンソールに出ます(Invoke API の外側です)。
 - AgentCore 組み込みのセマンティックツール検索(`x_amz_bedrock_agentcore_search`)は未実装です(意図的な省略)。
-- ターゲット種別は Lambda、OpenAPI、MCP パススルー、AWS ゲートウェイパススルーを実装済みで、Smithy は未対応です。
+- ターゲット種別は Lambda、OpenAPI、MCP パススルー、AWS ゲートウェイパススルーを実装済みで(加えてローカル専用のモックターゲット)、Smithy は未対応です。
   アウトバウンド認証(OpenAPI と MCP パススルー共通)は静的 API キー(ヘッダーまたはクエリ)とベアラートークンをカバーします。
   OAuth 2LO はスコープ外です。
 - ハイブリッド機能(`type: aws-gateway`、`lambda.backend: aws`)は `aws` extra と本物の AWS 認証情報が必要で、AWS 側の挙動(コールドスタート、IAM、クォータ)に従います。
