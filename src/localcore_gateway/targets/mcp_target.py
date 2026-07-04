@@ -62,6 +62,9 @@ def _run_sync(coro: Any) -> Any:
 
 
 class MCPTarget(Target):
+    # In error messages; the aws-gateway subclass overrides it.
+    _kind = "mcp"
+
     def __init__(self, cfg: MCPTargetConfig, gw: GatewayConfig) -> None:
         self._cfg = cfg
         self._gw = gw
@@ -87,7 +90,8 @@ class MCPTarget(Target):
         missing = [n for n in cfg.tools if n not in discovered]
         if missing:
             raise ValueError(
-                f"mcp target {cfg.name!r}: allowlisted tool(s) not found on upstream server: {', '.join(missing)}"
+                f"{self._kind} target {cfg.name!r}: allowlisted tool(s) not found "
+                f"on upstream server: {', '.join(missing)}"
             )
         return {n: discovered[n] for n in cfg.tools}
 

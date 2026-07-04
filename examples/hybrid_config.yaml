@@ -1,0 +1,56 @@
+# Hybrid debugging: one target under local development, everything else REAL.
+#
+# This example is fully commented out because it needs actual AWS resources
+# (a deployed AgentCore Gateway and/or a deployed Lambda) plus credentials.
+# Install the extra first:  pip install 'localcore-gateway[aws]'
+#
+# The workflow: your agent points at this LOCAL gateway; the tool you're
+# iterating on runs on your machine (edit -> invoke, no deploy), while the
+# rest of your production toolset passes through untouched.
+
+server:
+  name: localcore-gateway
+  host: 127.0.0.1
+  port: 8080
+  path: /mcp
+
+targets:
+  # 1) The tool under development: a local handler (edit handlers.py freely).
+  - type: lambda
+    name: dev
+    lambda: { backend: native, handler: handlers.handler }
+    tools:
+      - name: add
+        inputSchema:
+          type: object
+          properties: { a: { type: number }, b: { type: number } }
+          required: [a, b]
+
+  # 2) Everything else: pass through to the REAL deployed gateway. Its tools
+  #    already carry `remoteTarget___tool` names and are exposed VERBATIM
+  #    (no local prefix; `name` is identification only). No AWS analog --
+  #    this target type exists purely for this workflow.
+  # - type: aws-gateway
+  #   name: prod
+  #   url: https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp
+  #   auth: { type: sigv4, region: us-east-1 }          # IAM (default chain)
+  #   # auth: { type: sigv4, region: us-east-1, profile: myprofile }
+  #   # auth: { type: bearer, value: "${TOKEN}" }       # OAuth/JWT gateways
+  #   # tools: [orders___lookup]                        # optional allowlist
+
+  # 3) Or invoke one REAL deployed Lambda behind a local tool schema
+  #    (backend: aws -- the third backend next to native/sam).
+  # - type: lambda
+  #   name: real
+  #   lambda:
+  #     backend: aws
+  #     aws_function: my-deployed-fn        # name or full ARN
+  #     region: us-east-1
+  #     # aws_profile: myprofile            # default: default credential chain
+  #     timeout_sec: 30                     # = boto3 read timeout; retries off
+  #   tools:
+  #     - name: lookup
+  #       inputSchema:
+  #         type: object
+  #         properties: { id: { type: string } }
+  #         required: [id]

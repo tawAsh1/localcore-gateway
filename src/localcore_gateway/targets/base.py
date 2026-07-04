@@ -31,6 +31,12 @@ class ToolOutcome:
 
 
 class Target(abc.ABC):
+    # Whether the gateway prefixes this target's tools with `<name>___`.
+    # True for every AgentCore-faithful target type; the aws-gateway
+    # passthrough sets False because a real gateway's tools already carry
+    # the `remoteTarget___tool` form (re-prefixing would double it).
+    prefix_tools: bool = True
+
     @property
     @abc.abstractmethod
     def name(self) -> str:

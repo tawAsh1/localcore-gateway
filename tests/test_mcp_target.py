@@ -1,29 +1,17 @@
 from __future__ import annotations
 
-import contextlib
-import socket
 import sys
 import textwrap
-import threading
-import time
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-import uvicorn
 from fastmcp import Client, FastMCP
 
+from conftest import serve_asgi
 from localcore_gateway.config import GatewayConfig
 from localcore_gateway.gateway import build_gateway
 from localcore_gateway.targets.mcp_target import MCPTarget
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 def _make_upstream() -> FastMCP:
@@ -44,32 +32,11 @@ def _make_upstream() -> FastMCP:
     return srv
 
 
-@contextlib.contextmanager
-def _serve(app) -> Iterator[str]:
-    port = _free_port()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    # No readiness callback on uvicorn.Server from a plain thread; a short
-    # poll-free sleep is simplest here (ephemeral local server, not flaky CI
-    # infra).
-    for _ in range(50):
-        if server.started:
-            break
-        time.sleep(0.05)
-    try:
-        yield f"http://127.0.0.1:{port}/mcp"
-    finally:
-        server.should_exit = True
-        thread.join(timeout=5)
-
-
 @pytest.fixture
 def upstream_url() -> Iterator[str]:
     """A tiny FastMCP server, live on an ephemeral port over streamable HTTP."""
-    with _serve(_make_upstream().http_app(path="/mcp")) as url:
-        yield url
+    with serve_asgi(_make_upstream().http_app(path="/mcp")) as base:
+        yield f"{base}/mcp"
 
 
 @pytest.fixture
@@ -84,8 +51,8 @@ def upstream_spy() -> Iterator[tuple[str, dict]]:
             seen["headers"] = {k.decode().lower(): v.decode() for k, v in scope["headers"]}
         await inner(scope, receive, send)
 
-    with _serve(app) as url:
-        yield url, seen
+    with serve_asgi(app) as base:
+        yield f"{base}/mcp", seen
 
 
 def _mcp_target(url: str, **extra) -> MCPTarget:

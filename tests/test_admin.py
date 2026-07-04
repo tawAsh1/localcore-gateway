@@ -1,49 +1,19 @@
 from __future__ import annotations
 
-import contextlib
-import socket
-import threading
-import time
 from collections.abc import Iterator
 
 import httpx
 import pytest
-import uvicorn
 import yaml
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 
+from conftest import free_port as _free_port
+from conftest import serve_asgi as _serve
 from localcore_gateway.__main__ import main
 from localcore_gateway.app import build_app
 from localcore_gateway.config import GatewayConfig
 from localcore_gateway.history import PREVIEW_LIMIT, InvocationLog
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-@contextlib.contextmanager
-def _serve(app) -> Iterator[str]:
-    """Serve an ASGI app on an ephemeral port; yields the base URL."""
-    port = _free_port()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(50):
-        if server.started:
-            break
-        time.sleep(0.05)
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.should_exit = True
-        thread.join(timeout=5)
 
 
 def _make_upstream() -> FastMCP:
@@ -266,8 +236,8 @@ def test_cli_sync_against_running_gateway(env, tmp_path, capsys):
     assert rc == 0
     assert "st: static (nothing to sync)" in out
     assert "up: +1 added, -1 removed, ~1 updated" in out
-    assert "  + up___extra" in out
-    assert "  - up___temp" in out
+    assert "  + extra" in out
+    assert "  - temp" in out
 
 
 def test_tail_format_line():

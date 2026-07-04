@@ -46,7 +46,7 @@ def _expand_env(node: Any) -> Any:
 class LambdaFunctionConfig(BaseModel):
     """How to run the Lambda behind a target."""
 
-    backend: Literal["native", "sam"] = "native"
+    backend: Literal["native", "sam", "aws"] = "native"
 
     # --- native backend ---
     handler: str | None = Field(
@@ -77,6 +77,16 @@ class LambdaFunctionConfig(BaseModel):
         description="Logical function name in the SAM template. Required for backend=sam.",
     )
 
+    # --- aws backend (a REAL deployed function; requires the `aws` extra) ---
+    aws_function: str | None = Field(
+        default=None,
+        description="Deployed function name or full ARN. Required for backend=aws.",
+    )
+    aws_profile: str | None = Field(
+        default=None,
+        description="AWS profile for backend=aws (default: the default credential chain).",
+    )
+
     # --- shared, faithful Lambda config knobs ---
     function_name: str = "local-function"
     memory_mb: int = 128
@@ -96,6 +106,8 @@ class LambdaFunctionConfig(BaseModel):
             raise ValueError("lambda.handler is required when backend=native")
         if self.backend == "sam" and not self.sam_function:
             raise ValueError("lambda.sam_function is required when backend=sam")
+        if self.backend == "aws" and not self.aws_function:
+            raise ValueError("lambda.aws_function is required when backend=aws")
         return self
 
 
@@ -270,8 +282,59 @@ class MCPTargetConfig(BaseModel):
         return self
 
 
+class AWSGatewayAuthConfig(BaseModel):
+    """Outbound auth to a real AgentCore Gateway: bearer (OAuth/JWT) or SigV4 (IAM)."""
+
+    type: Literal["none", "bearer", "sigv4"] = "none"
+    value: str | None = Field(default=None, description="Bearer token (type=bearer).")
+    region: str | None = Field(
+        default=None,
+        description="Signing region (type=sigv4). Optional: falls back to the "
+        "profile chain's region; no region anywhere is a startup error.",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="AWS profile (type=sigv4). Default: the default credential chain.",
+    )
+
+    @model_validator(mode="after")
+    def _check(self) -> AWSGatewayAuthConfig:
+        if self.type == "bearer" and not self.value:
+            raise ValueError("auth.value is required when type=bearer")
+        return self
+
+
+class AWSGatewayTargetConfig(BaseModel):
+    """A REAL deployed AgentCore Gateway, proxied into the local one.
+
+    No AWS analog as a target type -- this exists for the hybrid debugging
+    workflow (develop one target locally, pass the rest of the production
+    toolset through). The deployed gateway's tools already carry AgentCore's
+    ``remoteTarget___tool`` names and are exposed **verbatim** -- no local
+    ``<name>___`` prefix (re-prefixing would double it) -- so ``name`` is for
+    identification/logging only. Requires the `aws` extra for sigv4 auth.
+    """
+
+    type: Literal["aws-gateway"] = "aws-gateway"
+    name: str = Field(description="Target name (identification/logging only; tools are NOT prefixed).")
+    url: str = Field(description="The deployed gateway's MCP endpoint (streamable HTTP).")
+    headers: dict[str, str] = Field(default_factory=dict, description="Static headers sent with every request.")
+    auth: AWSGatewayAuthConfig = Field(
+        default_factory=AWSGatewayAuthConfig,
+        description="Outbound auth: bearer (OAuth/JWT-configured gateways) or sigv4 (IAM).",
+    )
+    timeout_sec: float = 30.0
+    tools: list[str] = Field(
+        default_factory=list,
+        description="Optional allowlist of remote tool names to expose (already-prefixed form).",
+    )
+
+
 # Discriminated by `type`.
-TargetConfig = Annotated[LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig, Field(discriminator="type")]
+TargetConfig = Annotated[
+    LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig | AWSGatewayTargetConfig,
+    Field(discriminator="type"),
+]
 
 
 class ServerConfig(BaseModel):
