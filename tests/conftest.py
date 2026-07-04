@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import sys
 
+# Pre-import so it lands in _isolate_imports' baseline snapshot: httpx lazily
+# imports httpcore on the FIRST real request and maps its exceptions by class
+# identity. If that first import happened inside a test, isolation would evict
+# httpcore and later tests would see unmapped (re-imported) httpcore errors.
+import httpcore  # noqa: F401
 import pytest
 
 

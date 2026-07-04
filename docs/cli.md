@@ -59,10 +59,51 @@ lcgw invoke -c examples/config.yaml demo/add   --data '{"a":2,"b":40}'   # / als
   `{"isError": bool, "payload": ...}` to stdout.
 - Exit code `1` if the tool errored, `0` on success, `2` on bad selector.
 
+## `lcgw sync`
+
+Re-sync targets on a **running** gateway (`serve`/`dev` must be up): MCP
+targets re-discover their upstream tool set and the live catalog is updated
+in place — added, removed, and changed tools take effect without a restart.
+The local analog of AgentCore's `SynchronizeGatewayTargets`, with one
+divergence: the real API is asynchronous (202 + poll), ours is synchronous
+and returns the result directly.
+
+```bash
+lcgw sync -c examples/config.yaml [--target NAME]
+```
+
+- Reads `server.host`/`server.port` from the config and POSTs `/-/sync`.
+- `--target NAME`: sync only that target.
+- Prints one summary per target: the added/removed/updated tool names,
+  `static (nothing to sync)` for Lambda/OpenAPI targets, or the error.
+- Exit code `1` if the server is unreachable or any target errored.
+
+## `lcgw tail`
+
+Stream invocations from a **running** gateway: one line per tool call (time,
+OK/ERROR, tool, duration, compact args/result preview), polling
+`GET /-/invocations` (~0.5 s) until Ctrl-C.
+
+```bash
+lcgw tail -c examples/config.yaml [-n N] [--json]
+```
+
+- `-n N`: show the last N invocations from the backlog first (default: tail
+  from "now").
+- `--json`: emit raw JSONL records instead of formatted lines.
+- Backlog depth is the server's ring buffer (`server.history`, default 1000);
+  argument/payload previews are truncated server-side at 4 KB each.
+- Exit code `0` on Ctrl-C, `1` if the server is unreachable.
+
+Both commands talk to a small local admin surface (`POST /-/sync`,
+`GET /-/invocations`) served next to the MCP endpoint. It is local-only and
+unauthenticated by design (same stance as the MCP endpoint — see
+SECURITY.md) and has no AWS analog.
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | `invoke`: the tool returned an error |
+| `1` | `invoke`: the tool returned an error; `sync`/`tail`: server unreachable or a target errored |
 | `2` | bad arguments / unknown target or selector |

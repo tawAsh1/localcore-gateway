@@ -78,17 +78,18 @@ class MCPTarget(Target):
         # but worth knowing if your upstream server is slow to boot.
         self._client: Client | None = None
 
-        discovered = {td.name: td for td in _run_sync(self._discover())}
+        self._tools = self._apply_allowlist({td.name: td for td in _run_sync(self._discover())})
 
-        if cfg.tools:
-            missing = [n for n in cfg.tools if n not in discovered]
-            if missing:
-                raise ValueError(
-                    f"mcp target {cfg.name!r}: allowlisted tool(s) not found on upstream server: {', '.join(missing)}"
-                )
-            self._tools = {n: discovered[n] for n in cfg.tools}
-        else:
-            self._tools = discovered
+    def _apply_allowlist(self, discovered: dict[str, ToolDef]) -> dict[str, ToolDef]:
+        cfg = self._cfg
+        if not cfg.tools:
+            return discovered
+        missing = [n for n in cfg.tools if n not in discovered]
+        if missing:
+            raise ValueError(
+                f"mcp target {cfg.name!r}: allowlisted tool(s) not found on upstream server: {', '.join(missing)}"
+            )
+        return {n: discovered[n] for n in cfg.tools}
 
     def _transport(self, *, keep_alive: bool = True) -> ClientTransport:
         cfg = self._cfg
@@ -120,6 +121,18 @@ class MCPTarget(Target):
         return self._cfg.name
 
     def list_tools(self) -> list[ToolDef]:
+        return list(self._tools.values())
+
+    async def resync(self) -> list[ToolDef]:
+        """Re-run upstream discovery and re-apply the allowlist.
+
+        The SynchronizeGatewayTargets analog (driven by ``POST /-/sync`` /
+        ``lcgw sync``). An allowlisted name missing at resync time raises,
+        which the gateway sync layer reports as that target's error. Uses a
+        fresh short-lived connection like ``__init__``; the persistent
+        invocation session is untouched.
+        """
+        self._tools = self._apply_allowlist({td.name: td for td in await self._discover()})
         return list(self._tools.values())
 
     async def _connected_client(self) -> Client:
