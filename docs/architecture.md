@@ -72,6 +72,7 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.aws_deps` | optional-`aws`-extra gate (actionable error when boto3 is missing) |
 | `localcore_gateway.history` | in-memory invocation ring buffer (`lcgw tail` backend) |
 | `localcore_gateway.testing` | **public** pytest helpers: `serve_gateway` / `call_tool` / `serve_asgi` (see [testing.md](testing.md)) |
+| `localcore_gateway.preflight` | config-only checks against real-AgentCore deploy constraints (`lcgw preflight`) |
 | `localcore_gateway.app` | ASGI app assembly (MCP endpoint + `/-/sync`, `/-/invocations` admin routes) + uvicorn `--factory` entrypoint |
 | `localcore_gateway.__main__` | `lcgw` CLI |
 

@@ -64,6 +64,9 @@ targets:
 - **`localcore_gateway.testing`**:公開の pytest ヘルパーです。
   `serve_gateway` がゲートウェイ全体を一時ポートで起動し、`call_tool` で単発のアサーションが書けます。
   [Testing your handlers](docs/testing.md) を参照してください。
+- **設定の検証**:`lcgw schema` が設定ファイルの JSON Schema を出力します(yaml-language-server 経由でエディタに接続できます)。
+  `lcgw preflight` は設定を本物の AgentCore のデプロイ制約(名前のパターン、クォータ、ローカル専用の構成要素)に照らして、デプロイ前にチェックします。
+  [CLI リファレンス](docs/cli.md)を参照してください。
 
 ## ローカル Lambda バックエンド
 
@@ -79,7 +82,7 @@ targets:
 - [Configuration reference](docs/configuration.md):全設定フィールド
 - [Writing Lambda handlers](docs/lambda-handlers.md):ハンドラーコントラクト、マルチツール、エラー、ログ、native と sam の違い
 - [Testing your handlers](docs/testing.md):`localcore_gateway.testing`、モックターゲット、pytest でのコントラクトチェック
-- [CLI reference](docs/cli.md):`serve` / `dev` / `tools` / `invoke`
+- [CLI reference](docs/cli.md):`serve` / `dev` / `tools` / `invoke` / `sync` / `tail` / `schema` / `preflight`
 - [Connecting agents](docs/connecting-agents.md):MCP クライアントの接続、本物の AWS への昇格
 
 ## インストール

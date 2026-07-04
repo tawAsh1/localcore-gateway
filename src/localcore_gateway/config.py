@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 # `${NAME}` (expanded from the environment) or `$${NAME}` (escape: literal
 # `${NAME}`). Bare `$NAME` and any other `$` are left untouched.
@@ -404,8 +405,9 @@ class GatewayConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     targets: list[TargetConfig] = Field(default_factory=list)
 
-    # Set by the loader; the directory of the config file.
-    source_dir: str | None = None
+    # Set by the loader; the directory of the config file. SkipJsonSchema:
+    # loader-internal, kept out of `lcgw schema` (it's not a YAML surface).
+    source_dir: SkipJsonSchema[str | None] = None
 
     def _resolve(self, rel: str) -> Path:
         """Resolve a path relative to the config file's directory."""
