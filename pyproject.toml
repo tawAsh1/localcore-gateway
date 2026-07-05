@@ -60,8 +60,8 @@ packages = ["src/localcore_gateway"]
 # Supply-chain: ignore releases newer than this date when resolving, so a
 # freshly-published (possibly compromised) version gets a quarantine window.
 # Fixed date (uv does not roll automatically); bump it forward periodically.
-# Set ~7 days back from 2026-05-16.
-exclude-newer = "2026-05-09T00:00:00Z"
+# Set ~7 days back from 2026-07-05.
+exclude-newer = "2026-06-28T00:00:00Z"
 
 [tool.ruff]
 line-length = 120
