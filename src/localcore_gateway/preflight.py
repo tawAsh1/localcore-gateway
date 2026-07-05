@@ -41,6 +41,9 @@ _MAX_TOOL_NAME_LEN = 256
 _MAX_INLINE_SCHEMA_BYTES = 1_000_000  # 1 MB inline toolSchema payload per target
 _MAX_TIMEOUT_SEC = 900.0  # gateway invocation timeout: 15 minutes
 
+# Hard documented limit for Smithy models (gateway-building-smithy-targets).
+_MAX_SMITHY_MODEL_BYTES = 10_000_000
+
 # One obvious place to classify local-only constructs (extend when adding
 # target types): first matching rule wins, no match = deployable.
 _LOCAL_ONLY_RULES: tuple[tuple[str, Callable[[Any], bool]], ...] = (
@@ -135,6 +138,18 @@ def preflight(cfg: GatewayConfig) -> list[Finding]:
                     f"{timeout:g}s exceeds the gateway invocation timeout of {_MAX_TIMEOUT_SEC:g}s (15 minutes)",
                 )
             )
+
+        if tc.type == "smithy":
+            # Hard documented limit (deploy rejected), so ERROR not WARN.
+            model_size = len(json.dumps(cfg.smithy_model(tc)).encode())
+            if model_size > _MAX_SMITHY_MODEL_BYTES:
+                findings.append(
+                    Finding(
+                        "ERROR",
+                        f"{loc}.model",
+                        f"Smithy model is {model_size} bytes, over the {_MAX_SMITHY_MODEL_BYTES}-byte (10 MB) limit",
+                    )
+                )
 
         tools = _declared_tools(cfg, tc)
         if not tools:

@@ -41,6 +41,12 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   the operation's `operationId` **verbatim** (as the real gateway does, not a
   slugified form), spec-level security is ignored (auth configured out of
   band).
+- **Smithy targets** — a Smithy 2.0 JSON AST model's operations become MCP
+  tools (`aws.protocols#restJson1` only and 10 MB max, same as the real
+  gateway); tool name = the operation's shape name; restJson1 HTTP bindings
+  (`httpLabel`/`httpQuery`/`httpHeader`/`httpPayload`) drive the request;
+  auth is none/apikey/bearer for local servers or SigV4 for real AWS
+  services. This completes the real gateway's target-type matrix.
 - **MCP-passthrough targets** — another MCP server's whole catalog is
   proxied: tools, **prompts** (`target___prompt`, AWS's documented naming),
   and **resources** (URIs as-is; shared URIs routed by `resource_priority`,
@@ -202,11 +208,13 @@ tools; the handler branches on `bedrockAgentCoreToolName`.
   Invoke API).
 - AgentCore's builtin semantic tool search (`x_amz_bedrock_agentcore_search`)
   is **not implemented** (intentionally omitted).
-- Target types: **Lambda**, **OpenAPI**, **MCP-passthrough**, and
-  **AWS-gateway passthrough** are implemented (plus local-only **mock**
-  targets); Smithy is not yet. Outbound auth (OpenAPI and MCP-passthrough
-  alike) covers static API key (header/query) and bearer; OAuth 2LO is out
-  of scope.
+- All four real target types are implemented — **Lambda**, **OpenAPI**,
+  **Smithy**, and **MCP-passthrough** — plus the local-only **AWS-gateway
+  passthrough** and **mock** targets. Outbound auth (OpenAPI and
+  MCP-passthrough alike) covers static API key (header/query) and bearer;
+  OAuth 2LO is out of scope. Smithy accepts any restJson1 model locally
+  (AWS restricts custom models to AWS services) and requires `base_url`
+  (endpoint rule sets are not implemented).
 - The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) require
   the `aws` extra and real AWS credentials, and are subject to AWS-side
   behavior (cold starts, IAM, quotas) — nothing local emulates them.

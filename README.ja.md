@@ -28,6 +28,10 @@ AgentCore Gateway には公式のローカルエミュレータがありませ�
 - **OpenAPI ターゲット**:REST API の仕様が MCP ツールになります。
   ツール名はオペレーションの `operationId` そのままで、本物のゲートウェイと同じくスラッグ化しません。
   仕様側の security 定義は無視されます(認証は別途設定)。
+- **Smithy ターゲット**:Smithy 2.0 JSON AST モデルのオペレーションが MCP ツールになります(本物のゲートウェイと同じく `aws.protocols#restJson1` のみ、モデルは最大 10 MB)。
+  ツール名はオペレーションのシェイプ名で、リクエストは restJson1 の HTTP バインディング(`httpLabel`、`httpQuery`、`httpHeader`、`httpPayload`)に従って組み立てられます。
+  認証はローカルサーバー向けの none、apikey、bearer に加えて、本物の AWS サービス向けの SigV4 に対応します。
+  これで本物のゲートウェイのターゲット種別がすべて揃いました。
 - **MCP パススルーターゲット**:別の MCP サーバーのカタログ全体をプロキシします。
   ツールに加えて**プロンプト**(`target___prompt`。AWS が文書化している命名規約)と**リソース**(URI は無加工。同じ URI を複数ターゲットが公開する場合は AgentCore の `resourcePriority` に相当する `resource_priority` でルーティング)も対象で、`prompts/get` と `resources/read` は上流へライブ転送されます。
   Streamable HTTP が AgentCore に忠実なモードで、ローカル専用の便宜機能として stdio の `command` モードもあります(AWS 側に対応物なし)。
@@ -173,7 +177,8 @@ lambda:
   Lambda の同時実行環境スケーリングは模していません。
 - `sam` の呼び出しごとのログは `sam local` のコンソールに出ます(Invoke API の外側です)。
 - AgentCore 組み込みのセマンティックツール検索(`x_amz_bedrock_agentcore_search`)は未実装です(意図的な省略)。
-- ターゲット種別は Lambda、OpenAPI、MCP パススルー、AWS ゲートウェイパススルーを実装済みで(加えてローカル専用のモックターゲット)、Smithy は未対応です。
+- 本物のターゲット種別 4 つ(Lambda、OpenAPI、Smithy、MCP パススルー)をすべて実装済みです(加えてローカル専用の AWS ゲートウェイパススルーとモックターゲット)。
+  Smithy はローカルでは任意の restJson1 モデルを受け付け(AWS はカスタムモデルを AWS サービスに制限)、エンドポイントルールセット未実装のため `base_url` が必須です。
   アウトバウンド認証(OpenAPI と MCP パススルー共通)は静的 API キー(ヘッダーまたはクエリ)とベアラートークンをカバーします。
   OAuth 2LO はスコープ外です。
 - ハイブリッド機能(`type: aws-gateway`、`lambda.backend: aws`)は `aws` extra と本物の AWS 認証情報が必要で、AWS 側の挙動(コールドスタート、IAM、クォータ)に従います。

@@ -48,6 +48,16 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `SynchronizeGatewayTargets` (`PUT /gateways/{id}/synchronize`, 202 + async) | `POST /-/sync` / `lcgw sync` — **synchronous**, returns the per-target diff directly |
 | MCP targets: prompts + resources indexed (`prompts/list`, `resources/list`, `resources/templates/list`); prompt naming `target___prompt`; resource URIs as-is with `resourcePriority` routing | same: `MCPTarget` discovery + `gateway._resource_owner_map`; `prompts/get` / `resources/read` proxied live to the upstream |
 | MCP targets: progress + logging notifications forwarded; elicitation + sampling passed through to the client | `MCPTarget` re-emits via the caller's server Context (`report_progress` / `log`) and relays elicitation (form mode) / sampling via `ctx.session` — needs the default session/SSE mode |
+| Smithy targets: Smithy 2.0 JSON AST, restJson1 only, 10 MB cap, operation shape name as the tool name | `SmithyTarget`: same constraints enforced at build; any restJson1 model accepted locally (AWS restricts to AWS services); `base_url` required (no endpoint rule sets) |
+
+Forward note: the MCP spec's
+[2026-07-28 release](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/)
+(final July 28, 2026) removes `Mcp-Session-Id`, the initialize handshake,
+and protocol-level sessions (stateless redesign; server-initiated
+interactivity becomes an InputRequiredResult/requestState retry pattern).
+The real gateway currently supports protocol versions 2025-03-26 /
+2025-06-18 / 2025-11-25 (sessions), which our sessions/SSE mode mirrors;
+this area will be reworked when AWS adopts the stateless spec.
 
 The admin surface (`POST /-/sync`, `GET /-/invocations` — invocation history
 for `lcgw tail`) lives outside the MCP path on the same app. It is local-only
@@ -66,6 +76,7 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server's tools, prompts, and resources (streamable HTTP, or local stdio as a convenience), verbatim remote names |
 | `localcore_gateway.targets.aws_gateway_target` | proxies a REAL deployed AgentCore Gateway (hybrid debugging): MCPTarget subclass, un-prefixed verbatim names, bearer/SigV4 auth |
 | `localcore_gateway.targets.mock_target` | mock target: config-declared tools with canned responses/errors (local-only, no AWS analog) |
+| `localcore_gateway.targets.smithy_target` | Smithy 2.0 JSON AST → MCP tools (restJson1 bindings via httpx, shape-name tool naming, SigV4 or local auth) |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
 | `localcore_gateway.lambda_emu.native` | subprocess-worker manager (default) |
 | `localcore_gateway.lambda_emu._worker` | the per-target subprocess runtime |
@@ -118,11 +129,13 @@ a separate API, so it has no wire-level analog.
   the Invoke API), so that backend reports only an invoke summary.
 - AgentCore's builtin semantic tool search
   (`x_amz_bedrock_agentcore_search`) is intentionally not implemented.
-- Lambda, OpenAPI, and MCP-passthrough target types are implemented (plus
-  local-only mock targets); Smithy is not. OpenAPI reuses FastMCP's
+- All four real target types are implemented — Lambda, OpenAPI, Smithy, and
+  MCP-passthrough (plus local-only mock targets). OpenAPI reuses FastMCP's
   spec→HTTP engine but overrides naming to the verbatim `operationId` for
   AgentCore fidelity; outbound auth is static API key (header/query) or
-  bearer only (no OAuth 2LO).
+  bearer only (no OAuth 2LO). Smithy accepts any restJson1 model locally
+  (AWS restricts custom models to AWS services), requires `base_url` (no
+  endpoint rule sets), and simplifies timestamps to date-time strings.
 - The hybrid features (`type: aws-gateway`, `lambda.backend: aws`) talk to
   real AWS and have no AgentCore analog as *local* concepts; they need the
   `aws` extra and credentials, and inherit AWS-side behavior (cold starts,
