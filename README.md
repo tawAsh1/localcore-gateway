@@ -33,12 +33,15 @@ is for the *Runtime*, not the Gateway). This fills that gap.
   the operation's `operationId` **verbatim** (as the real gateway does, not a
   slugified form), spec-level security is ignored (auth configured out of
   band).
-- **MCP-passthrough targets** — another MCP server's tools are proxied
-  verbatim (remote tool names, unprefixed). Streamable HTTP is the
-  AgentCore-faithful mode; a local stdio `command` mode is also available as
-  a local-only convenience (no AWS analog).
+- **MCP-passthrough targets** — another MCP server's whole catalog is
+  proxied: tools, **prompts** (`target___prompt`, AWS's documented naming),
+  and **resources** (URIs as-is; shared URIs routed by `resource_priority`,
+  the AgentCore `resourcePriority` analog), with `prompts/get` and
+  `resources/read` forwarded live. Streamable HTTP is the AgentCore-faithful
+  mode; a local stdio `command` mode is also available as a local-only
+  convenience (no AWS analog).
 - **Target re-sync** — `lcgw sync` is the `SynchronizeGatewayTargets` analog:
-  MCP targets re-discover their upstream tools on a running gateway, no
+  MCP targets re-discover their upstream catalog on a running gateway, no
   restart (synchronous, unlike AWS's async 202-style API). Plus a dev-loop
   extra with no AWS analog: `lcgw tail` streams every tool invocation live.
 

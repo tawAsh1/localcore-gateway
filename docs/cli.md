@@ -62,11 +62,12 @@ lcgw invoke -c examples/config.yaml demo/add   --data '{"a":2,"b":40}'   # / als
 ## `lcgw sync`
 
 Re-sync targets on a **running** gateway (`serve`/`dev` must be up): MCP
-targets re-discover their upstream tool set and the live catalog is updated
-in place — added, removed, and changed tools take effect without a restart.
-The local analog of AgentCore's `SynchronizeGatewayTargets`, with one
-divergence: the real API is asynchronous (202 + poll), ours is synchronous
-and returns the result directly.
+targets re-discover their upstream catalog (tools, prompts, resources) and
+the live registry is updated in place — added, removed, and changed entries
+take effect without a restart. The local analog of AgentCore's
+`SynchronizeGatewayTargets`, with one divergence: the real API is
+asynchronous (202 + poll), ours is synchronous and returns the result
+directly.
 
 ```bash
 lcgw sync -c examples/config.yaml [--target NAME]
@@ -74,8 +75,10 @@ lcgw sync -c examples/config.yaml [--target NAME]
 
 - Reads `server.host`/`server.port` from the config and POSTs `/-/sync`.
 - `--target NAME`: sync only that target.
-- Prints one summary per target: the added/removed/updated tool names,
+- Prints one summary per target: the added/removed/updated tool names (plus
+  `prompts:`/`resources:` count lines when the target has any),
   `static (nothing to sync)` for Lambda/OpenAPI targets, or the error.
+  Shared-resource ownership (`resource_priority`) is re-evaluated too.
 - Exit code `1` if the server is unreachable or any target errored.
 
 ## `lcgw tail`

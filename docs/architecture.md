@@ -46,6 +46,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | Inbound authorizer (OAuth/JWT \| IAM) | **not implemented** — no inbound auth (local dev tool) |
 | `x_amz_bedrock_agentcore_search` | **not implemented** (intentionally omitted) |
 | `SynchronizeGatewayTargets` (`PUT /gateways/{id}/synchronize`, 202 + async) | `POST /-/sync` / `lcgw sync` — **synchronous**, returns the per-target diff directly |
+| MCP targets: prompts + resources indexed (`prompts/list`, `resources/list`, `resources/templates/list`); prompt naming `target___prompt`; resource URIs as-is with `resourcePriority` routing | same: `MCPTarget` discovery + `gateway._resource_owner_map`; `prompts/get` / `resources/read` proxied live to the upstream |
 
 The admin surface (`POST /-/sync`, `GET /-/invocations` — invocation history
 for `lcgw tail`) lives outside the MCP path on the same app. It is local-only
@@ -61,7 +62,7 @@ a separate API, so it has no wire-level analog.
 | `localcore_gateway.targets.base` | `Target` interface, `ToolDef`, `ToolOutcome` |
 | `localcore_gateway.targets.lambda_target` | AgentCore MCP ↔ Lambda translation |
 | `localcore_gateway.targets.openapi_target` | OpenAPI → MCP (FastMCP engine, verbatim `operationId` naming, outbound auth) |
-| `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server (streamable HTTP, or local stdio as a convenience), verbatim tool names |
+| `localcore_gateway.targets.mcp_target` | MCP-passthrough: proxies another MCP server's tools, prompts, and resources (streamable HTTP, or local stdio as a convenience), verbatim remote names |
 | `localcore_gateway.targets.aws_gateway_target` | proxies a REAL deployed AgentCore Gateway (hybrid debugging): MCPTarget subclass, un-prefixed verbatim names, bearer/SigV4 auth |
 | `localcore_gateway.targets.mock_target` | mock target: config-declared tools with canned responses/errors (local-only, no AWS analog) |
 | `localcore_gateway.lambda_emu.base` | `LambdaInvoker` interface, `make_invoker` factory |
@@ -128,11 +129,12 @@ a separate API, so it has no wire-level analog.
 - MCP-passthrough keeps one persistent upstream `Client` session (opened
   lazily on first call); a call that hits a dead session (upstream
   restart/dropped connection) fails as a tool error, then the session is
-  re-opened on a later call. Upstream tool-list changes are picked up via
-  `lcgw sync`, not automatically. Outbound auth (streamable HTTP mode) reuses
-  the OpenAPI targets' engine — static headers, bearer, or an API key in a
-  header/query param. The stdio `command` mode is a local-only convenience
-  with no AgentCore analog.
+  re-opened on a later call. Upstream catalog changes (tools, prompts,
+  resources) are picked up via `lcgw sync`, not automatically. Outbound auth
+  (streamable HTTP mode) reuses the OpenAPI targets' engine — static
+  headers, bearer, or an API key in a header/query param. The stdio
+  `command` mode is a local-only convenience with no AgentCore analog.
 - Invocation history (`lcgw tail`) is an in-memory ring buffer
   (`server.history` entries, 4 KB per args/payload preview) — no
-  persistence, gone on restart.
+  persistence, gone on restart. It records tool calls only; `prompts/get`
+  and `resources/read` passthroughs are not recorded.

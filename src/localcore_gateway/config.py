@@ -262,7 +262,17 @@ class MCPTargetConfig(BaseModel):
     )
 
     timeout_sec: float = 30.0
-    tools: list[str] = Field(default_factory=list, description="Optional allowlist of upstream tool names to expose.")
+    tools: list[str] = Field(
+        default_factory=list,
+        description="Optional allowlist of upstream tool names to expose. Tools only: "
+        "prompts/resources are not filtered.",
+    )
+    resource_priority: int = Field(
+        default=100,
+        description="AgentCore `resourcePriority` analog: when several targets expose the same "
+        "resource URI, the lowest value wins (ties: config order). AWS documents no default; "
+        "we use 100.",
+    )
 
     @model_validator(mode="after")
     def _check_transport(self) -> MCPTargetConfig:
@@ -327,7 +337,14 @@ class AWSGatewayTargetConfig(BaseModel):
     timeout_sec: float = 30.0
     tools: list[str] = Field(
         default_factory=list,
-        description="Optional allowlist of remote tool names to expose (already-prefixed form).",
+        description="Optional allowlist of remote tool names to expose (already-prefixed form). "
+        "Tools only: prompts/resources are not filtered.",
+    )
+    resource_priority: int = Field(
+        default=100,
+        description="AgentCore `resourcePriority` analog: when several targets expose the same "
+        "resource URI, the lowest value wins (ties: config order). AWS documents no default; "
+        "we use 100.",
     )
 
 
