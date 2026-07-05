@@ -1,4 +1,4 @@
-"""``lcgw`` CLI: serve / dev / tools / invoke / sync / tail."""
+"""``lcgw`` CLI: serve / dev / tools / invoke / sync / tail / schema / preflight."""
 
 from __future__ import annotations
 
@@ -233,6 +233,39 @@ def _cmd_tail(args: argparse.Namespace) -> int:
         return 1
 
 
+def _cmd_schema(args: argparse.Namespace) -> int:
+    # by_alias: the schema must match the YAML surface (`lambda:`, `in:`,
+    # `inputSchema`), not the python field names.
+    schema = GatewayConfig.model_json_schema(by_alias=True)
+    text = json.dumps(schema, indent=2, ensure_ascii=False)
+    if args.output:
+        Path(args.output).write_text(text + "\n")
+        print(f"wrote {args.output}", file=sys.stderr)
+    else:
+        print(text)
+    return 0
+
+
+def _cmd_preflight(args: argparse.Namespace) -> int:
+    from localcore_gateway.preflight import preflight
+
+    cfg = load_config(args.config)
+    findings = preflight(cfg)
+    if not findings:
+        print("no findings")
+        return 0
+    by_severity = {"ERROR": 0, "WARN": 0, "NOTICE": 0}
+    for severity in by_severity:
+        for f in findings:
+            if f.severity == severity:
+                by_severity[severity] += 1
+                print(f"{severity:<6} {f.location}: {f.message}")
+    print(f"{by_severity['ERROR']} error(s), {by_severity['WARN']} warning(s), {by_severity['NOTICE']} notice(s)")
+    if by_severity["ERROR"] or (args.strict and by_severity["WARN"]):
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _setup_logging()
     p = argparse.ArgumentParser(
@@ -276,6 +309,15 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("-n", "--lines", type=int, default=0, help="show the last N invocations first")
     sp.add_argument("--json", action="store_true", help="emit raw JSONL instead of formatted lines")
     sp.set_defaults(func=_cmd_tail)
+
+    sp = sub.add_parser("schema", help="print the config file's JSON Schema")
+    sp.add_argument("--output", help="write to this file instead of stdout")
+    sp.set_defaults(func=_cmd_schema)
+
+    sp = sub.add_parser("preflight", help="check the config against real-AgentCore deploy constraints")
+    add_cfg(sp)
+    sp.add_argument("--strict", action="store_true", help="exit 1 on warnings too, not just errors")
+    sp.set_defaults(func=_cmd_preflight)
 
     args = p.parse_args(argv)
     return args.func(args)

@@ -21,6 +21,7 @@ targets:
     lambda: { backend: native, handler: handlers.handler }
     tools:
       - name: add
+        description: Add two numbers (the tool under local development).
         inputSchema:
           type: object
           properties: { a: { type: number }, b: { type: number } }

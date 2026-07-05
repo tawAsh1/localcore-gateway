@@ -102,10 +102,58 @@ Both commands talk to a small local admin surface (`POST /-/sync`,
 unauthenticated by design (same stance as the MCP endpoint — see
 SECURITY.md) and has no AWS analog.
 
+## `lcgw schema`
+
+Print the config file's JSON Schema (generated from the pydantic models,
+matching the YAML surface: `lambda:`, `in:`, `inputSchema`, …).
+
+```bash
+lcgw schema                                # JSON to stdout
+lcgw schema --output gateway.schema.json   # write to a file
+```
+
+Wire it to your editor via the yaml-language-server modeline for completion
+and inline validation while editing configs:
+
+```yaml
+# yaml-language-server: $schema=./gateway.schema.json
+server: { port: 8080 }
+targets: []
+```
+
+Regenerate the file after upgrading (the schema tracks the config models).
+
+## `lcgw preflight`
+
+Check a config against **real AgentCore deploy constraints** — catches
+"worked locally, rejected by `CreateGateway`/`CreateGatewayTarget`" before
+you deploy. Config-only: no targets are constructed (no network, no
+subprocesses), so tool sets that only exist at runtime (OpenAPI specs,
+MCP/aws-gateway upstream catalogs) are not preflighted — only what the
+config declares.
+
+```bash
+lcgw preflight -c gateway.yaml [--strict]
+```
+
+| Severity | Meaning | Checks |
+|---|---|---|
+| `ERROR` | hard API validation — the deploy **will** be rejected | gateway name pattern `([0-9a-zA-Z][-]?){1,48}`; target name pattern `([0-9a-zA-Z][-]?){1,100}` (underscores are NOT allowed, though they pass locally); empty tool descriptions (required by AgentCore's ToolDefinition) |
+| `WARN` | default service quotas — adjustable, may differ per account | >100 targets per gateway; >1000 tools per target; tool names >256 chars; inline tool-schema payload >1 MB per target; `timeout_sec` >900 s (15-minute invocation timeout) |
+| `NOTICE` | local-only constructs — nothing to deploy | `type: mock`, `type: aws-gateway`, and MCP targets in stdio `command` mode (url-mode MCP targets are deployable) |
+
+- Exit `1` if any ERROR; with `--strict`, also on any WARN; else `0`
+  (`no findings` when clean).
+- Constraint sources (checked as of 2026-07; the WARN values are
+  account-adjustable defaults):
+  [CreateGateway](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateGateway.html),
+  [CreateGatewayTarget](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreateGatewayTarget.html),
+  [AgentCore quotas](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/bedrock-agentcore-limits.html).
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | `invoke`: the tool returned an error; `sync`/`tail`: server unreachable or a target errored |
+| `1` | `invoke`: the tool returned an error; `sync`/`tail`: server unreachable or a target errored; `preflight`: findings at ERROR (or WARN with `--strict`) |
 | `2` | bad arguments / unknown target or selector |

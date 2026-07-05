@@ -80,6 +80,11 @@ See [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) and the
 - **`localcore_gateway.testing`** — public pytest helpers: `serve_gateway`
   spins up the full gateway on an ephemeral port, `call_tool` makes one-shot
   assertions. See [Testing your handlers](docs/testing.md).
+- **Config validation** — `lcgw schema` emits the config file's JSON Schema
+  (wire it to your editor via yaml-language-server); `lcgw preflight` checks
+  a config against real-AgentCore deploy constraints (name patterns, quotas,
+  local-only constructs) before you deploy. See the
+  [CLI reference](docs/cli.md).
 
 ## Local Lambda backends
 
@@ -95,7 +100,7 @@ See [`examples/hybrid_config.yaml`](examples/hybrid_config.yaml) and the
 - [Configuration reference](docs/configuration.md) — every config field
 - [Writing Lambda handlers](docs/lambda-handlers.md) — the handler contract, multi-tool, errors, logs, native vs sam
 - [Testing your handlers](docs/testing.md) — `localcore_gateway.testing`, mock targets, contract checks in pytest
-- [CLI reference](docs/cli.md) — `serve` / `dev` / `tools` / `invoke`
+- [CLI reference](docs/cli.md) — `serve` / `dev` / `tools` / `invoke` / `sync` / `tail` / `schema` / `preflight`
 - [Connecting agents](docs/connecting-agents.md) — point an MCP client at it; promote to real AWS
 
 ## Install

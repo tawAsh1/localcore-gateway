@@ -6,6 +6,12 @@ the **config file's directory** unless absolute.
 
 Full working example: [`examples/config.yaml`](../examples/config.yaml).
 
+Editor support: `lcgw schema --output gateway.schema.json` emits this file's
+JSON Schema; point the yaml-language-server at it with a
+`# yaml-language-server: $schema=./gateway.schema.json` modeline for
+completion and inline validation. `lcgw preflight` additionally checks a
+config against real-AgentCore deploy constraints (see [cli.md](cli.md)).
+
 ## Environment variable expansion
 
 `${VAR}` in any string value is replaced with the environment variable `VAR`
