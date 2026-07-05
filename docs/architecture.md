@@ -37,7 +37,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 
 | AgentCore Gateway | Here |
 |---|---|
-| MCP Streamable HTTP at `/mcp` | `FastMCP.http_app(path="/mcp", stateless_http=True, json_response=True)` |
+| MCP Streamable HTTP at `/mcp`, sessions (`Mcp-Session-Id`) + SSE streaming (since May 2026) | `FastMCP.http_app(path="/mcp")` in session/SSE mode by default; `server.stateless: true` restores the pre-May-2026 buffered-JSON behavior |
 | Tool naming `target___tool` | `gateway.NAME_SEP = "___"`, one MCP tool per `(target, tool)` |
 | Lambda target: args as event | `LambdaTarget.call_tool` passes `arguments` as the Lambda `event` |
 | `context.client_context.custom['bedrockAgentCoreToolName']` | injected by `LambdaTarget` (plus `bedrockAgentCoreGatewayId`, `bedrockAgentCoreTargetName`) |
@@ -47,6 +47,7 @@ return value  →  MCP tool result   (errors → MCP isError / ToolError)
 | `x_amz_bedrock_agentcore_search` | **not implemented** (intentionally omitted) |
 | `SynchronizeGatewayTargets` (`PUT /gateways/{id}/synchronize`, 202 + async) | `POST /-/sync` / `lcgw sync` — **synchronous**, returns the per-target diff directly |
 | MCP targets: prompts + resources indexed (`prompts/list`, `resources/list`, `resources/templates/list`); prompt naming `target___prompt`; resource URIs as-is with `resourcePriority` routing | same: `MCPTarget` discovery + `gateway._resource_owner_map`; `prompts/get` / `resources/read` proxied live to the upstream |
+| MCP targets: progress + logging notifications forwarded; elicitation + sampling passed through to the client | `MCPTarget` re-emits via the caller's server Context (`report_progress` / `log`) and relays elicitation (form mode) / sampling via `ctx.session` — needs the default session/SSE mode |
 
 The admin surface (`POST /-/sync`, `GET /-/invocations` — invocation history
 for `lcgw tail`) lives outside the MCP path on the same app. It is local-only
@@ -138,3 +139,8 @@ a separate API, so it has no wire-level analog.
   (`server.history` entries, 4 KB per args/payload preview) — no
   persistence, gone on restart. It records tool calls only; `prompts/get`
   and `resources/read` passthroughs are not recorded.
+- Sessions are the MCP SDK's in-memory ones: no per-user scoping and no
+  1-hour timeout emulation (AWS scopes sessions per authenticated user).
+  URL-mode elicitation passthrough is unsupported; with concurrent calls
+  through one MCP target, upstream log/elicitation/sampling traffic routes
+  to the most recent in-flight caller.

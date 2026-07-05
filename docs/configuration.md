@@ -37,8 +37,29 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 | `host` | string | `127.0.0.1` | |
 | `port` | int | `8080` | |
 | `path` | string | `/mcp` | |
+| `stateless` | bool | `false` | serving mode (below). **Default changed in 0.x**: sessions + SSE |
 | `history` | int | `1000` | invocation-history ring buffer size (backs `lcgw tail` / `GET /-/invocations`) |
 | `contract_checks` | `off` \| `warn` \| `error` | `off` | validate tool arguments/results against the declared JSON Schemas (below) |
+
+### `stateless` — serving mode
+
+Since May 2026 the real gateway maintains **stateful MCP sessions**
+(`Mcp-Session-Id` issued on initialize) and **streams responses over SSE**
+([sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-sessions.html)).
+`stateless: false` (the default) reproduces that: sessions via the MCP SDK's
+session manager, SSE responses, and it is what mid-call progress/logging
+notifications and elicitation/sampling passthrough need to actually stream.
+`stateless: true` restores the pre-May-2026 behavior this project shipped
+with previously — buffered JSON responses, no sessions (mid-call
+notifications are buffered away; elicitation/sampling passthrough is
+rejected).
+
+> **Breaking default (0.x):** older versions always served stateless.
+> Set `server: { stateless: true }` to restore the old behavior exactly.
+
+Fidelity notes: AWS scopes sessions per authenticated user with a 1-hour
+default timeout; this local gateway has no inbound auth, so sessions are
+the SDK's in-memory ones — no per-user scoping or timeout emulation.
 
 ### `contract_checks` — catching schema drift locally
 
@@ -191,6 +212,37 @@ the gateway's full environment. The MCP SDK spawns it with only a safe
 default subset (`HOME`, `PATH`, `SHELL`, `TERM`, `USER`, `LOGNAME` on POSIX),
 plus `env_file` then inline `env` merged on top (inline wins). Anything else
 the server needs must be passed explicitly.
+
+### Mid-call passthrough: progress, logging, elicitation, sampling
+
+Matching the real gateway, an MCP target relays the interactive parts of a
+tool call, not just the result:
+
+- **Progress notifications**
+  ([progress](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-mcp-progress.html)):
+  upstream `ctx.report_progress` re-emits to the calling client as it
+  arrives, keyed to the caller's own `progressToken` (no token → dropped,
+  standard MCP semantics).
+- **Logging notifications**
+  ([logging](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-mcp-logging.html)):
+  upstream log messages forward to the caller with their level preserved.
+- **Elicitation**
+  ([elicitation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-mcp-elicitation.html)):
+  a downstream server's form-mode elicitation request travels up to YOUR
+  client (raw `requestedSchema`, forwarded 1:1) and the answer back down.
+  **URL-mode elicitation is not supported** (documented limitation).
+- **Sampling**
+  ([sampling](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-mcp-sampling.html)):
+  a downstream `sampling/createMessage` request is relayed to your client's
+  LLM and the completion returned downstream.
+
+These need the default session/SSE serving mode (`server.stateless: false`,
+above): in stateless mode notifications are buffered away and
+elicitation/sampling requests fail with a "requires sessions" error. Outside
+a gateway request (`lcgw invoke`, direct target calls) notifications are
+dropped silently. With **concurrent** calls through one target, upstream
+log/elicitation/sampling traffic routes to the most recent in-flight caller
+(a local simplification; the real gateway scopes by user session).
 
 ### `auth` (`OpenAPIAuthConfig`) — outbound, `url` mode only
 

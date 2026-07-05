@@ -61,10 +61,15 @@ def build_app(cfg: GatewayConfig) -> tuple[Any, Any, list[Any]]:
         records, next_seq = history.since(since, limit=limit)
         return JSONResponse({"invocations": records, "next": next_seq})
 
+    # Default (stateless=false): the modern gateway wire behavior (since May
+    # 2026) -- stateful MCP sessions (Mcp-Session-Id issued on initialize)
+    # and SSE-streamed responses, so mid-call notifications and
+    # elicitation/sampling passthrough can flow. `server.stateless: true`
+    # restores the pre-May-2026 behavior (buffered JSON, no sessions).
     app = mcp.http_app(
         path=cfg.server.path,
-        json_response=True,
-        stateless_http=True,
+        json_response=cfg.server.stateless,
+        stateless_http=cfg.server.stateless,
     )
     return app, mcp, targets
 

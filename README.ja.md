@@ -19,6 +19,10 @@ AgentCore Gateway には公式のローカルエミュレータがありませ�
 ## 再現しているもの
 
 - **`/mcp` での MCP Streamable-HTTP**:本物のゲートウェイと同じワイヤサーフェスです([FastMCP](https://github.com/jlowin/fastmcp) 3.x サーバー上に構築。JSON-RPC の手書き実装はしていません)。
+  2026 年 5 月以降の挙動である**ステートフルセッション**(`Mcp-Session-Id`)と **SSE ストリーミング応答**も再現します。
+  ⚠️ これが新しいデフォルトです。従来のバッファリングされた JSON 応答に戻すには `server: { stateless: true }` を設定してください。
+- **インタラクティブパススルー(MCP ターゲット)**:呼び出し中の**進捗**と**ログ**の通知を発生と同時に呼び出し元へストリーミングし、下流サーバーからの**エリシテーション**(フォームモード)と**サンプリング**のリクエストをクライアントへ中継して回答を下流へ返します。
+  本物のゲートウェイが文書化しているのと同じパススルーです。
 - **ターゲット集約**:すべての `(target, tool)` が `target___tool` という名前の 1 つの MCP ツールとして公開されます(AgentCore のトリプルアンダースコア規約)。
 - **AgentCore Lambda コントラクト**:ツール引数は Lambda の event として渡され、ツールの識別子は `context.client_context.custom['bedrockAgentCoreToolName']` で届き、Lambda の戻り値がツール結果になります。
 - **OpenAPI ターゲット**:REST API の仕様が MCP ツールになります。

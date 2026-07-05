@@ -17,6 +17,10 @@ lcgw serve -c examples/config.yaml [--host H] [--port P]
 
 - `--host` / `--port` override `server.host` / `server.port` from config.
 - Endpoint: `http://{host}:{port}{path}` (path default `/mcp`).
+- Serves in session/SSE mode by default (`Mcp-Session-Id` + streamed
+  responses — the modern gateway behavior); `server.stateless: true`
+  restores buffered JSON (see
+  [configuration.md](configuration.md#stateless--serving-mode)).
 - No hot reload (use `dev` for that). Targets are closed cleanly on shutdown.
 
 ## `lcgw dev`

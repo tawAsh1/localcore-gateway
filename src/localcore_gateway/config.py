@@ -406,6 +406,13 @@ class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
     path: str = "/mcp"
+    stateless: bool = Field(
+        default=False,
+        description="false (default) = the modern gateway behavior (since May 2026): stateful MCP "
+        "sessions (Mcp-Session-Id) and SSE-streamed responses, which mid-call notifications and "
+        "elicitation/sampling passthrough need. true = the pre-May-2026 behavior: buffered JSON "
+        "responses, no sessions.",
+    )
     history: int = Field(
         default=1000,
         description="Invocation-history ring buffer size (backs `lcgw tail` / GET /-/invocations).",

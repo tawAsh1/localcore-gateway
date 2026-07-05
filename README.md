@@ -22,7 +22,15 @@ is for the *Runtime*, not the Gateway). This fills that gap.
 
 - **MCP Streamable-HTTP at `/mcp`** — the same wire surface as the real gateway
   (built on the [FastMCP](https://github.com/jlowin/fastmcp) 3.x server; no
-  hand-rolled JSON-RPC).
+  hand-rolled JSON-RPC), including the modern (May 2026+) behavior:
+  **stateful sessions** (`Mcp-Session-Id`) and **SSE-streamed responses**.
+  ⚠️ This is the new default — `server: { stateless: true }` restores the
+  previous buffered-JSON mode.
+- **Interactive passthrough (MCP targets)** — mid-call **progress** and
+  **logging** notifications stream through to the caller as they're
+  produced, and downstream **elicitation** (form mode) and **sampling**
+  requests are relayed to your client and answered back down — the same
+  passthroughs the real gateway documents.
 - **Target aggregation** — every `(target, tool)` is exposed as one MCP tool
   named `target___tool` (AgentCore's triple-underscore convention).
 - **AgentCore Lambda contract** — the tool arguments are passed as the Lambda
