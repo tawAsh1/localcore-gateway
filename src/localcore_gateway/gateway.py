@@ -316,6 +316,10 @@ def build_targets(cfg: GatewayConfig) -> list[Target]:
             from localcore_gateway.targets.mock_target import MockTarget
 
             targets.append(MockTarget(tc))
+        elif tc.type == "smithy":
+            from localcore_gateway.targets.smithy_target import SmithyTarget
+
+            targets.append(SmithyTarget(tc, cfg))
         else:  # pragma: no cover - config validation prevents this
             raise ValueError(f"unsupported target type: {tc.type!r}")
     return targets

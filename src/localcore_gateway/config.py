@@ -394,9 +394,84 @@ class MockTargetConfig(BaseModel):
         return self
 
 
+class SmithyAuthConfig(BaseModel):
+    """Outbound auth for a Smithy target.
+
+    ``none``/``apikey``/``bearer`` share the OpenAPI shape (local test
+    servers); ``sigv4`` signs for a real AWS service (requires the `aws`
+    extra) -- ``service`` is the signing scope (e.g. ``lambda``, ``s3``).
+    """
+
+    type: Literal["none", "apikey", "bearer", "sigv4"] = "none"
+    in_: Literal["header", "query"] = Field(default="header", alias="in")
+    name: str = "X-API-Key"
+    value: str | None = None
+    region: str | None = Field(
+        default=None,
+        description="Signing region (type=sigv4). Optional: falls back to the "
+        "profile chain's region; no region anywhere is a startup error.",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="AWS profile (type=sigv4). Default: the default credential chain.",
+    )
+    service: str | None = Field(
+        default=None,
+        description="SigV4 signing service (type=sigv4, required): the actual AWS "
+        "service the model fronts, e.g. `lambda`, `s3`.",
+    )
+
+    model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _check(self) -> SmithyAuthConfig:
+        if self.type in ("apikey", "bearer") and not self.value:
+            raise ValueError(f"auth.value is required when type={self.type}")
+        if self.type == "sigv4" and not self.service:
+            raise ValueError("auth.service is required when type=sigv4 (the AWS signing scope)")
+        return self
+
+
+class SmithyTargetConfig(BaseModel):
+    """A Smithy gateway target: a Smithy 2.0 model's operations as MCP tools.
+
+    Faithful to AgentCore where it matters: the model is the Smithy 2.0 JSON
+    AST, `aws.protocols#restJson1` only, at most 10 MB; tool name = the
+    operation's shape name without its namespace. Local divergences: any
+    restJson1 model is accepted (AWS restricts custom models to AWS services
+    and ships built-in ones), and `base_url` is required because endpoint
+    rule sets are not implemented.
+    """
+
+    type: Literal["smithy"] = "smithy"
+    name: str = Field(description="Target name; tools are '<name>___<OperationName>'.")
+    model: dict[str, Any] | None = Field(
+        default=None, description="Inline Smithy 2.0 JSON AST ({'smithy': '2.0', 'shapes': {...}})."
+    )
+    model_file: str | None = Field(
+        default=None,
+        description="Path to a Smithy 2.0 JSON AST file (JSON only), relative to the "
+        "config file's directory. Exactly one of model / model_file.",
+    )
+    base_url: str = Field(description="The service endpoint. Required: endpoint rule sets are not implemented locally.")
+    timeout_sec: float = 30.0
+    auth: SmithyAuthConfig = Field(default_factory=SmithyAuthConfig)
+
+    @model_validator(mode="after")
+    def _check_model(self) -> SmithyTargetConfig:
+        if bool(self.model) == bool(self.model_file):
+            raise ValueError("exactly one of `model` / `model_file` is required")
+        return self
+
+
 # Discriminated by `type`.
 TargetConfig = Annotated[
-    LambdaTargetConfig | OpenAPITargetConfig | MCPTargetConfig | AWSGatewayTargetConfig | MockTargetConfig,
+    LambdaTargetConfig
+    | OpenAPITargetConfig
+    | MCPTargetConfig
+    | AWSGatewayTargetConfig
+    | MockTargetConfig
+    | SmithyTargetConfig,
     Field(discriminator="type"),
 ]
 
@@ -523,6 +598,19 @@ class GatewayConfig(BaseModel):
             # like the rest of config validation.
             raise ValueError(  # noqa: TRY004
                 f"{tc.spec_file}: OpenAPI spec must be a mapping"
+            )
+        return raw
+
+    def smithy_model(self, tc: SmithyTargetConfig) -> dict[str, Any]:
+        """The Smithy 2.0 JSON AST (inline or loaded from model_file; JSON only)."""
+        if tc.model is not None:
+            return tc.model
+        raw = json.loads(self._resolve(tc.model_file).read_text())
+        if not isinstance(raw, dict):
+            # ValueError (not TypeError): a malformed config/model file, surfaced
+            # like the rest of config validation.
+            raise ValueError(  # noqa: TRY004
+                f"{tc.model_file}: Smithy model must be a JSON object"
             )
         return raw
 

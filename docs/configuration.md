@@ -27,7 +27,7 @@ files it references (`spec_file`, `tool_schema_file`, `env_file`).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `server` | object | see below | HTTP server / MCP endpoint |
-| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, `type: mcp`, `type: aws-gateway`, or `type: mock` (mixable) |
+| `targets` | list | `[]` | gateway targets; each is `type: lambda`, `type: openapi`, `type: smithy`, `type: mcp`, `type: aws-gateway`, or `type: mock` (mixable) |
 
 ## `server` (`ServerConfig`)
 
@@ -61,6 +61,15 @@ Fidelity notes: AWS scopes sessions per authenticated user with a 1-hour
 default timeout; this local gateway has no inbound auth, so sessions are
 the SDK's in-memory ones — no per-user scoping or timeout emulation.
 
+Forward note: the MCP spec's
+[2026-07-28 release](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/)
+(final July 28, 2026) removes `Mcp-Session-Id`, the initialize handshake,
+and protocol-level sessions entirely (server-initiated interactivity becomes
+an InputRequiredResult/requestState retry pattern). The real gateway
+currently supports protocol versions 2025-03-26 / 2025-06-18 / 2025-11-25
+(sessions), which our sessions/SSE mode mirrors; this area will be reworked
+when AWS adopts the stateless spec.
+
 ### `contract_checks` — catching schema drift locally
 
 A local dev aid, **off by default for fidelity**: the real gateway validates
@@ -88,7 +97,8 @@ loopback only; front it with your own proxy/auth if you must expose it. See
 [connecting-agents.md](connecting-agents.md#authentication).
 
 `targets` is a list; each entry is discriminated by `type` (`lambda`,
-`openapi`, `mcp`, `aws-gateway`, or `mock`). You can mix any of these.
+`openapi`, `smithy`, `mcp`, `aws-gateway`, or `mock`). You can mix any of
+these.
 
 ## A Lambda target (`type: lambda`)
 
@@ -381,6 +391,74 @@ targets:
 ```
 
 Pairs well with [`localcore_gateway.testing`](testing.md) for pytest use.
+
+## A Smithy target (`type: smithy`)
+
+A **Smithy 2.0 model**'s operations become MCP tools — the last of the real
+gateway's target types
+([devguide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-building-smithy-targets.html)).
+**Faithful to AgentCore**: the model is the Smithy 2.0 **JSON AST**
+(`{"smithy": "2.0", "shapes": {...}}`), the service must use
+`aws.protocols#restJson1` (the only supported protocol — restXml, awsJson,
+awsQuery, ec2Query and streaming operations are rejected by the real gateway
+and by us, at build time), and models are capped at **10 MB** (build error
+here; `lcgw preflight` flags it as ERROR too). The tool name is the
+operation's **shape name without its namespace**
+(`example.weather#GetCurrentWeather` → `weather___GetCurrentWeather`) — the
+Smithy analog of the verbatim `operationId`.
+
+Local divergences (deliberate, for a dev tool): **any** restJson1 model is
+accepted, while AWS restricts custom models to AWS services and ships
+[built-in models](https://github.com/aws/api-models-aws); and `base_url` is
+**required** because endpoint rule sets are not implemented locally.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `smithy` | `smithy` | |
+| `name` | string | required | tools are `<name>___<OperationName>` |
+| `model` | object | – | inline Smithy 2.0 JSON AST |
+| `model_file` | string | – | path to a JSON AST file (JSON only), relative to the config dir. Exactly one of `model` / `model_file` |
+| `base_url` | string | required | the service endpoint (no endpoint rule sets locally) |
+| `timeout_sec` | float | `30.0` | per-request timeout |
+| `auth` | object | `{type: none}` | outbound auth (below) |
+
+**Schema conversion:** structures (member `smithy.api#documentation` /
+`#required` / `#default` respected), primitives, lists, maps, enums
+(`enumValue`s), timestamps (`string`/`date-time` — a simplification of
+restJson1's epoch-seconds body default), blobs (`string`, base64).
+Recursive shape references collapse to a bare `{}` schema. Unions and
+streaming members are rejected per operation at build time — loudly, not
+skipped.
+
+**Invocation (restJson1 bindings):** `httpLabel` members interpolate the URI
+path, `httpQuery`/`httpQueryParams` become query params, `httpHeader`
+headers, `httpPayload` the raw body, and every unbound member goes into the
+JSON request body. Non-2xx responses map to the standard error envelope.
+Static for `lcgw sync` purposes (the model is config; restart to re-read).
+
+### `auth` (`SmithyAuthConfig`)
+
+`none` / `apikey` / `bearer` behave exactly like the OpenAPI target's auth
+(local test servers). `sigv4` signs each request for a real AWS service and
+requires the `aws` extra (`pip install 'localcore-gateway[aws]'`):
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `type` | `none` \| `apikey` \| `bearer` \| `sigv4` | `none` | |
+| `in` / `name` / `value` | | | as in the OpenAPI `auth` (apikey/bearer) |
+| `region` | string | profile chain's region | `sigv4`: signing region |
+| `profile` | string | default credential chain | `sigv4`: AWS profile |
+| `service` | string | – | `sigv4` (**required**): the signing scope — the actual AWS service the model fronts, e.g. `lambda`, `s3` |
+
+```yaml
+targets:
+  - type: smithy
+    name: weather
+    model_file: weather.json          # Smithy 2.0 JSON AST
+    base_url: http://127.0.0.1:9100   # local test server...
+    # base_url: https://lambda.us-east-1.amazonaws.com   # ...or real AWS:
+    # auth: { type: sigv4, region: us-east-1, service: lambda }
+```
 
 ## `lambda` (`LambdaFunctionConfig`)
 

@@ -32,27 +32,34 @@ from localcore_gateway.targets.openapi_target import _ApiKeyAuth
 
 
 class _SigV4Auth(httpx.Auth):
-    """SigV4-signs every request (IAM auth; service ``bedrock-agentcore``).
+    """SigV4-signs every request (IAM auth).
 
-    ``requires_request_body``: the signature covers the payload hash, so
-    httpx must materialize ``request.content`` (and Content-Length) before
-    the auth flow runs.
+    ``service`` is the signing scope: ``bedrock-agentcore`` for aws-gateway
+    passthrough, the actual AWS service (``lambda``, ``s3``, ...) for Smithy
+    targets. ``requires_request_body``: the signature covers the payload
+    hash, so httpx must materialize ``request.content`` (and Content-Length)
+    before the auth flow runs.
     """
 
     requires_request_body = True
 
-    def __init__(self, auth: AWSGatewayAuthConfig) -> None:
+    def __init__(
+        self,
+        auth: Any,  # AWSGatewayAuthConfig / SmithyAuthConfig (duck-typed: region/profile)
+        service: str = "bedrock-agentcore",
+        kind: str = "aws-gateway",
+    ) -> None:
         boto3 = require_boto3()
         from botocore.auth import SigV4Auth
 
         session = boto3.Session(profile_name=auth.profile, region_name=auth.region)
         region = session.region_name
         if not region:
-            raise ValueError("aws-gateway target: auth.region is required (no region found in the AWS profile chain)")
+            raise ValueError(f"{kind} target: auth.region is required (no region found in the AWS profile chain)")
         creds = session.get_credentials()
         if creds is None:
-            raise ValueError("aws-gateway target: no AWS credentials found (set auth.profile or the default chain)")
-        self._signer = SigV4Auth(creds, "bedrock-agentcore", region)
+            raise ValueError(f"{kind} target: no AWS credentials found (set auth.profile or the default chain)")
+        self._signer = SigV4Auth(creds, service, region)
 
     def auth_flow(self, request: httpx.Request):
         from botocore.awsrequest import AWSRequest

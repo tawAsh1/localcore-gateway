@@ -145,7 +145,7 @@ lcgw preflight -c gateway.yaml [--strict]
 
 | Severity | Meaning | Checks |
 |---|---|---|
-| `ERROR` | hard API validation — the deploy **will** be rejected | gateway name pattern `([0-9a-zA-Z][-]?){1,48}`; target name pattern `([0-9a-zA-Z][-]?){1,100}` (underscores are NOT allowed, though they pass locally); empty tool descriptions (required by AgentCore's ToolDefinition) |
+| `ERROR` | hard API validation — the deploy **will** be rejected | gateway name pattern `([0-9a-zA-Z][-]?){1,48}`; target name pattern `([0-9a-zA-Z][-]?){1,100}` (underscores are NOT allowed, though they pass locally); empty tool descriptions (required by AgentCore's ToolDefinition); Smithy models over the 10 MB limit |
 | `WARN` | default service quotas — adjustable, may differ per account | >100 targets per gateway; >1000 tools per target; tool names >256 chars; inline tool-schema payload >1 MB per target; `timeout_sec` >900 s (15-minute invocation timeout) |
 | `NOTICE` | local-only constructs — nothing to deploy | `type: mock`, `type: aws-gateway`, and MCP targets in stdio `command` mode (url-mode MCP targets are deployable) |
 
