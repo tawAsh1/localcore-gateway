@@ -24,9 +24,10 @@ AgentCore Gateway には公式のローカルエミュレータがありませ�
 - **OpenAPI ターゲット**:REST API の仕様が MCP ツールになります。
   ツール名はオペレーションの `operationId` そのままで、本物のゲートウェイと同じくスラッグ化しません。
   仕様側の security 定義は無視されます(認証は別途設定)。
-- **MCP パススルーターゲット**:別の MCP サーバーのツールを、リモートのツール名を無加工で使ってプロキシします。
+- **MCP パススルーターゲット**:別の MCP サーバーのカタログ全体をプロキシします。
+  ツールに加えて**プロンプト**(`target___prompt`。AWS が文書化している命名規約)と**リソース**(URI は無加工。同じ URI を複数ターゲットが公開する場合は AgentCore の `resourcePriority` に相当する `resource_priority` でルーティング)も対象で、`prompts/get` と `resources/read` は上流へライブ転送されます。
   Streamable HTTP が AgentCore に忠実なモードで、ローカル専用の便宜機能として stdio の `command` モードもあります(AWS 側に対応物なし)。
-- **ターゲット再同期**:`lcgw sync` は `SynchronizeGatewayTargets` の対応物で、稼働中のゲートウェイ上で MCP ターゲットが上流のツールを再発見します。
+- **ターゲット再同期**:`lcgw sync` は `SynchronizeGatewayTargets` の対応物で、稼働中のゲートウェイ上で MCP ターゲットが上流のカタログを再発見します。
   再起動は不要です(AWS の非同期 202 スタイル API と違い、同期実行)。
   さらに AWS 側に対応物のない開発ループ用のおまけとして、`lcgw tail` が全ツール呼び出しをライブ表示します。
 

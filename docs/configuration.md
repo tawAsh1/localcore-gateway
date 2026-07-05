@@ -127,13 +127,17 @@ targets:
 
 ## An MCP-passthrough target (`type: mcp`)
 
-Another MCP server's tools, proxied. Remote tool names are used **verbatim**;
-the gateway adds the `<name>___` prefix uniformly (same as the other target
-types). **Faithful to AgentCore** for the `url` mode: the real gateway only
-ever speaks streamable HTTP to the upstream server. The `command` (stdio)
-mode is a **local-only convenience** with no AWS analog — it spawns a local
-MCP server subprocess instead of requiring one to already be listening over
-HTTP.
+Another MCP server's **whole catalog**, proxied: tools, prompts
+(`prompts/list`), and resources (`resources/list` +
+`resources/templates/list`) — the same set the real gateway indexes from an
+MCP server target
+([devguide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-target-MCPservers.html)).
+Remote tool names are used **verbatim**; the gateway adds the `<name>___`
+prefix uniformly (same as the other target types). **Faithful to AgentCore**
+for the `url` mode: the real gateway only ever speaks streamable HTTP to the
+upstream server. The `command` (stdio) mode is a **local-only convenience**
+with no AWS analog — it spawns a local MCP server subprocess instead of
+requiring one to already be listening over HTTP.
 
 Exactly one of `url` / `command` is required.
 
@@ -150,11 +154,37 @@ Exactly one of `url` / `command` is required.
 | `env_file` | string | – | `.env`-style file (KEY=VALUE per line) merged into the subprocess env; `env` overrides it (`command` mode only). Relative to the config dir |
 | `cwd` | string | – | subprocess working directory (`command` mode only), relative to the config dir; **defaults to the config dir** |
 | `timeout_sec` | float | `30.0` | per-request timeout |
-| `tools` | list[string] | `[]` | optional allowlist of upstream tool names to expose; unlisted tools are hidden. A name not found on the upstream server is a config-time error |
+| `tools` | list[string] | `[]` | optional allowlist of upstream tool names to expose; unlisted tools are hidden. A name not found on the upstream server is a config-time error. **Tools only** — prompts/resources are never filtered |
+| `resource_priority` | int | `100` | AgentCore `resourcePriority` analog: when several targets expose the same resource URI, the **lowest** value serves it (below) |
 
 Validation rejects mixed-mode fields rather than silently ignoring them:
 `headers` / `auth` require `url` (stdio has no HTTP headers/auth); `env` /
 `env_file` / `cwd` require `command` (not applicable to `url`).
+
+### Prompts & resources passthrough
+
+If the upstream advertises the capabilities, its prompts and resources
+(including templates) join the catalog; upstreams without them behave
+exactly as before. `prompts/get` and `resources/read` are proxied **live**
+to the upstream over the same persistent session as tools.
+
+- **Prompts** are named `<name>___<prompt>` — the convention AWS documents
+  for prompts as well as tools
+  ([prompts/get](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-using-mcp-prompts-get.html)).
+  Prompt-name collisions are errors, like tool names.
+- **Resource URIs are verbatim** — AWS: "The original URI from the MCP
+  server is returned as-is"
+  ([resources/list](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-using-mcp-resources-list.html)).
+  When several targets expose the **same URI**, the target with the lowest
+  `resource_priority` serves it, per AWS's documented `resourcePriority`
+  routing
+  ([resources/read](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-using-mcp-resources-read.html)).
+  AWS documents no default value (we use `100`) and no tie-break (we serve
+  the first target in config order and log a WARNING). Ownership is
+  re-evaluated on `lcgw sync`.
+- **Caution (from AWS's docs, and true here too):** resource URIs come from
+  the downstream server unvalidated — don't auto-fetch untrusted URIs, they
+  can point anywhere (SSRF).
 
 **Subprocess environment (`command` mode):** the child does **not** inherit
 the gateway's full environment. The MCP SDK spawns it with only a safe
@@ -193,13 +223,15 @@ targets:
   call). If it dies (upstream restart, dropped connection), the call that
   hits the dead session fails — surfaced as a tool error — and the session is
   re-opened on a later call once the client has noticed the death.
-- Tool discovery happens at construction, connecting and disconnecting
-  separately from the persistent invocation session; for `command` (stdio)
-  mode this means the subprocess is spawned twice (once at startup for
-  discovery, once lazily on first call for invocation). Upstream tool-list
-  changes after startup are not picked up automatically — run `lcgw sync`
-  (the SynchronizeGatewayTargets analog; see [cli.md](cli.md)) to
-  re-discover without a restart.
+- Discovery (tools, prompts, resources) happens at construction, connecting
+  and disconnecting separately from the persistent invocation session; for
+  `command` (stdio) mode this means the subprocess is spawned twice (once at
+  startup for discovery, once lazily on first call for invocation). Upstream
+  catalog changes after startup are not picked up automatically — run
+  `lcgw sync` (the SynchronizeGatewayTargets analog; see [cli.md](cli.md))
+  to re-discover without a restart.
+- The invocation history (`lcgw tail`) records tool calls only;
+  `prompts/get` and `resources/read` are not recorded.
 
 ## An AWS-gateway passthrough target (`type: aws-gateway`)
 
@@ -210,13 +242,14 @@ of your production toolset passes through to the deployed gateway, all
 behind one local MCP endpoint your agent points at. Requires the `aws` extra
 for `sigv4` auth (`pip install 'localcore-gateway[aws]'`).
 
-**Naming:** the deployed gateway's tools already carry AgentCore's
-`remoteTarget___tool` names and are exposed **verbatim** — no local
-`<name>___` prefix (re-prefixing would double it). `name` is for
-identification/logging only (`lcgw sync --target`, log lines). A name
-collision with any other target's tool is an error: at build a
+**Naming:** the deployed gateway's tools and prompts already carry
+AgentCore's `remoteTarget___name` form and are exposed **verbatim** — no
+local `<name>___` prefix (re-prefixing would double it). `name` is for
+identification/logging only (`lcgw sync --target`, log lines). A tool or
+prompt name collision with any other target is an error: at build a
 `ValueError`, at `lcgw sync` that target's error in the response (resolve
-the collision and restart).
+the collision and restart). Resource URIs follow the same priority routing
+as `mcp` targets (above).
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
@@ -226,10 +259,12 @@ the collision and restart).
 | `headers` | map<str,str> | `{}` | static headers sent with every request |
 | `auth` | object | `{type: none}` | `bearer` or `sigv4` (below) |
 | `timeout_sec` | float | `30.0` | per-request timeout |
-| `tools` | list[string] | `[]` | optional allowlist of remote tool names (already-prefixed form) |
+| `tools` | list[string] | `[]` | optional allowlist of remote tool names (already-prefixed form). Tools only — prompts/resources are never filtered |
+| `resource_priority` | int | `100` | same semantics as on `mcp` targets |
 
-Everything else (eager discovery, one persistent re-opened session, `lcgw
-sync` re-discovery, error mapping) behaves exactly like an `mcp` target.
+Everything else (eager discovery of tools/prompts/resources, one persistent
+re-opened session, `lcgw sync` re-discovery, error mapping) behaves exactly
+like an `mcp` target.
 
 ### `auth` (`AWSGatewayAuthConfig`)
 

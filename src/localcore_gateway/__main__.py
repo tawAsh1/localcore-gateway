@@ -156,6 +156,14 @@ def _format_sync_result(name: str, res: object) -> tuple[str, bool]:
             # Raw (un-prefixed) names: aws-gateway targets expose verbatim
             # names, so prepending `<target>___` here would be wrong there.
             line += f"\n  {mark} {tool}"
+    # MCP targets may also report prompt/resource catalog changes.
+    for kind in ("prompts", "resources"):
+        sub = res.get(kind)
+        if isinstance(sub, dict):
+            line += (
+                f"\n  {kind}: +{len(sub['added'])} added, -{len(sub['removed'])} removed, "
+                f"~{len(sub['updated'])} updated"
+            )
     return line, False
 
 
