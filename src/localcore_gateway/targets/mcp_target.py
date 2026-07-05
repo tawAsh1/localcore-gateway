@@ -34,6 +34,15 @@ implement is tolerated). Invocation -- tools, ``prompts/get``, and
 session, opened lazily on the first call and re-opened if the upstream
 session died (``Client.is_connected()`` goes false once its background
 session task unwinds -- upstream restart, dropped connection).
+
+Mid-call passthrough, matching the real gateway (see gateway-mcp-progress /
+-logging / -elicitation / -sampling in the devguide): upstream progress and
+logging notifications re-emit to the calling client as they arrive, and
+upstream elicitation (form mode) and sampling requests are relayed to OUR
+caller, the answer travelling back down. These only stream in the default
+session/SSE serving mode (``server.stateless: false``); elicitation/sampling
+are rejected in stateless mode, and outside a gateway request (``lcgw
+invoke``, direct target calls) notifications are dropped silently.
 """
 
 from __future__ import annotations
@@ -44,9 +53,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastmcp import Client
+from fastmcp.client.elicitation import ElicitResult
 from fastmcp.client.transports import ClientTransport, StdioTransport, StreamableHttpTransport
+from fastmcp.server.dependencies import get_context
 from mcp.shared.exceptions import McpError
-from mcp.types import METHOD_NOT_FOUND
+from mcp.types import METHOD_NOT_FOUND, ElicitRequestFormParams
 
 from localcore_gateway.config import GatewayConfig, MCPTargetConfig
 from localcore_gateway.targets.base import PromptDef, ResourceDef, Target, ToolDef, ToolOutcome
@@ -115,6 +126,12 @@ class MCPTarget(Target):
         # but worth knowing if your upstream server is slow to boot.
         self._client: Client | None = None
         self.resource_priority = cfg.resource_priority
+        # Server Contexts of in-flight call_tool callers, most recent last.
+        # Client-LEVEL upstream handlers (log / elicitation / sampling) run
+        # on the upstream session's own task where get_context() cannot see
+        # the caller, so they route through here instead. With concurrent
+        # callers the most recent one is picked (documented caveat).
+        self._callers: list[Any] = []
 
         self._apply_catalog(_run_sync(self._discover()))
 
@@ -235,10 +252,76 @@ class MCPTarget(Target):
                 await self._client.close()
                 self._client = None
             if self._client is None:
-                client = Client(self._transport(), timeout=self._timeout)
+                # The upstream-initiated flows (logging notifications,
+                # elicitation, sampling) are forwarded to the current caller
+                # -- the AgentCore passthrough behavior.
+                client = Client(
+                    self._transport(),
+                    timeout=self._timeout,
+                    log_handler=self._forward_log,
+                    elicitation_handler=self._forward_elicitation,
+                    sampling_handler=self._forward_sampling,
+                )
                 await client.__aenter__()  # held open across calls; closed in aclose()
                 self._client = client
             return self._client
+
+    @staticmethod
+    def _caller_context() -> Any | None:
+        """The active fastmcp server Context, or None (direct invocation)."""
+        try:
+            return get_context()
+        except RuntimeError:
+            return None
+
+    async def _forward_log(self, message: Any) -> None:
+        """Upstream logging notification -> the current caller's session.
+
+        No active caller (direct invocation, `lcgw invoke`, idle chatter
+        between calls): dropped silently.
+        """
+        if not self._callers:
+            return
+        data = message.data
+        text = data.get("msg") if isinstance(data, dict) and "msg" in data else str(data)
+        extra = data.get("extra") if isinstance(data, dict) else None
+        await self._callers[-1].log(str(text), level=message.level, logger_name=message.logger, extra=extra)
+
+    def _interactive_caller(self, what: str) -> Any:
+        """The caller Context an upstream {elicitation,sampling} goes to."""
+        if self._gw.server.stateless:
+            raise RuntimeError(f"{what} passthrough requires sessions (set server.stateless: false)")
+        if not self._callers:
+            raise RuntimeError(f"{what} passthrough requires an in-flight gateway tool call")
+        return self._callers[-1]
+
+    async def _forward_elicitation(self, message: str, _response_type: Any, params: Any, _context: Any) -> ElicitResult:
+        """Upstream elicitation request -> our caller, answer travels back."""
+        ctx = self._interactive_caller("elicitation")
+        if not isinstance(params, ElicitRequestFormParams):
+            # URL-mode elicitation: documented limitation (form mode only).
+            # RuntimeError (not TypeError): an unsupported-feature condition
+            # surfaced to the downstream server, not a coding bug.
+            raise RuntimeError("URL-mode elicitation passthrough is not supported")  # noqa: TRY004
+        # ctx.session is the SDK ServerSession: the raw requestedSchema is
+        # forwarded 1:1 (no re-typing), and the raw answer travels back.
+        res = await ctx.session.elicit_form(message, params.requestedSchema, related_request_id=ctx.request_id)
+        return ElicitResult(action=res.action, content=res.content)
+
+    async def _forward_sampling(self, _messages: Any, params: Any, _context: Any) -> Any:
+        """Upstream sampling request -> our caller's LLM, result back down."""
+        ctx = self._interactive_caller("sampling")
+        return await ctx.session.create_message(
+            messages=params.messages,
+            max_tokens=params.maxTokens,
+            system_prompt=params.systemPrompt,
+            include_context=params.includeContext,
+            temperature=params.temperature,
+            stop_sequences=params.stopSequences,
+            metadata=params.metadata,
+            model_preferences=params.modelPreferences,
+            related_request_id=ctx.request_id,
+        )
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolOutcome:
         if tool_name not in self._tools:
@@ -249,17 +332,36 @@ class MCPTarget(Target):
                 },
                 is_error=True,
             )
+        # The caller's Context (None when invoked outside a server request,
+        # e.g. `lcgw invoke` or direct target calls in tests): upstream
+        # progress re-emits through it, and it anchors the log/elicitation/
+        # sampling forwarding for the duration of the call.
+        ctx = self._caller_context()
+        progress_handler = None
+        if ctx is not None:
+            self._callers.append(ctx)
+
+            async def progress_handler(  # matches fastmcp's ProgressHandler
+                progress: float, total: float | None, message: str | None
+            ) -> None:
+                # No-op unless OUR caller sent a progressToken (the SDK keys
+                # the notification to it) -- faithful passthrough semantics.
+                await ctx.report_progress(progress, total, message)
+
         try:
             client = await self._connected_client()
             # call_tool_mcp (not call_tool): the raw protocol result carries
             # isError as data instead of raising, which maps 1:1 onto
             # ToolOutcome.
-            res = await client.call_tool_mcp(tool_name, arguments)
+            res = await client.call_tool_mcp(tool_name, arguments, progress_handler=progress_handler)
         except Exception as exc:  # noqa: BLE001  # any failure -> tool error
             return ToolOutcome(
                 payload={"errorMessage": str(exc), "errorType": type(exc).__name__},
                 is_error=True,
             )
+        finally:
+            if ctx is not None:
+                self._callers.remove(ctx)
         if res.isError:
             text = "".join(getattr(b, "text", "") for b in (res.content or []))
             return ToolOutcome(
