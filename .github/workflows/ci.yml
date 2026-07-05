@@ -19,9 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 = the requires-python floor (previously only run on newer);
-        # 3.13 = a current interpreter.
-        python-version: ["3.11", "3.13"]
+        # Every minor from the requires-python floor (3.11) to current.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       # Third-party actions pinned by commit SHA (supply-chain: a moved tag
       # cannot silently change what runs). Bump deliberately.
